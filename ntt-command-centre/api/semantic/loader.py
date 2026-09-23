@@ -32,7 +32,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from ..config import (
+from config import (
     ANOMALIES_CSV,
     AS_OF,
     CROSS_SELL_CSV,

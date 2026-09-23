@@ -1,4 +1,6 @@
 .DS_Store
+.myenv/
+myenv/
 .env
 .env.local
 **/.env

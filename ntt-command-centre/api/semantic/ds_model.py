@@ -47,7 +47,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from ..config import DATA_DIR
+from config import DATA_DIR
 
 PREDICTIONS_CSV = DATA_DIR / "ds_predictions.csv"
 BENCHMARKS_CSV = DATA_DIR / "ds_benchmarks.csv"

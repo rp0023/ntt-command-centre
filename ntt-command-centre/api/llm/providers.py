@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 
 import anthropic
 
-from ..config import (
+from config import (
     ANTHROPIC_KEY,
     ANTHROPIC_MODEL,
     GEMINI_KEYS,

@@ -33,28 +33,29 @@ by construction.
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from fastapi import Body, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import auth
-from .config import ALLOWED_ORIGINS, AS_OF
-from .llm import service as AI
-from .semantic import accounts as ACC
-from .semantic import actions as ACT
-from .semantic import anomalies as ANOM
-from .semantic import budget as B
-from .semantic import catalog as CAT
-from .semantic import crosssell as XS
-from .semantic import ds_model as DS
-from .semantic import measures as M
-from .semantic import personas as PR
-from .semantic import predict as P
-from .semantic import query as Q
-from .semantic import views as V
-from .semantic.loader import CUR_QUARTER, fy_label, report
-from .semantic.measures import FilterState
-from .semantic.personas import Principal
+import auth
+from config import ALLOWED_ORIGINS, AS_OF
+from llm import service as AI
+from semantic import accounts as ACC
+from semantic import actions as ACT
+from semantic import anomalies as ANOM
+from semantic import budget as B
+from semantic import catalog as CAT
+from semantic import crosssell as XS
+from semantic import ds_model as DS
+from semantic import measures as M
+from semantic import personas as PR
+from semantic import predict as P
+from semantic import query as Q
+from semantic import views as V
+from semantic.loader import CUR_QUARTER, fy_label, report
+from semantic.measures import FilterState
+from semantic.personas import Principal
 
 app = FastAPI(
     title="NTT Deal Intelligence — semantic API",
@@ -228,10 +229,11 @@ def api_risk(request: Request, limit: int = Query(default=50, le=300),
             {"opportunityCode": row.opportunity_code, "name": row.opportunity_name,
              "account": row.account_name, "owner": row.owner, "stage": row.stage,
              "lob": row.lob, "portfolio": row.portfolio,
-             "gp": float(row.acv_gp), "revenue": float(row.acv_revenue),
-             "riskScore": int(row.risk_score), "riskBand": row.risk_band,
+             "gp": float(cast(float, row.acv_gp)),
+             "revenue": float(cast(float, row.acv_revenue)),
+             "riskScore": int(cast(int, row.risk_score)), "riskBand": row.risk_band,
              "topDriver": row.top_driver, "factors": row.risk_factors,
-             "valueAtRisk": float(row.value_at_risk)}
+             "valueAtRisk": float(cast(float, row.value_at_risk))}
             for row in r.itertuples(index=False)
         ],
     }

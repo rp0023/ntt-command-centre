@@ -25,13 +25,13 @@ import hashlib
 import json
 import time
 
-from ..semantic import anomalies as ANOM
-from ..semantic import catalog as CAT
-from ..semantic import measures as M
-from ..semantic import narrative as N
-from ..semantic import predict as P
-from ..semantic import query as Q
-from ..semantic.personas import Principal
+from semantic import anomalies as ANOM
+from semantic import catalog as CAT
+from semantic import measures as M
+from semantic import narrative as N
+from semantic import predict as P
+from semantic import query as Q
+from semantic.personas import Principal
 from . import grounding as G
 from . import prompts, providers
 
@@ -142,7 +142,7 @@ def brief(fs: M.FilterState, principal: Principal, charts_say: list[str],
         return hit
 
     cards = []
-    from ..semantic import actions as ACT
+    from semantic import actions as ACT
 
     for c in ACT.build(fs, principal, limit=4):
         cards.append({"id": c["key"], "headline": c["headline"],
@@ -257,7 +257,7 @@ def _refusal(q: str, principal: Principal, reason: str, plan: dict | None = None
     The calm decline. One plain sentence saying why, and two questions for this
     persona that are known to work, so a dead end always has a way out.
     """
-    from ..semantic import answers as A
+    from semantic import answers as A
 
     out = {"question": q, "refused": True, "degraded": False, "provider": "computed",
            "answer": {"headline": headline,
@@ -275,7 +275,7 @@ def _plan_text(q: str, fs: M.FilterState, principal: Principal,
     keyword rules when none will. Raises `providers.LLMUnavailable` only when
     neither produced a plan, so the caller can refuse with alternatives.
     """
-    from ..semantic.dimensions import REGISTRY
+    from semantic.dimensions import REGISTRY
     from . import planner_fallback
 
     catalog = CAT.render()
@@ -336,7 +336,7 @@ def ask(question: str, fs: M.FilterState, principal: Principal,
     Nothing here returns "cannot answer right now": a question the data cannot
     answer as asked gets a calm refusal with two questions that work.
     """
-    from ..semantic import answers as A
+    from semantic import answers as A
 
     q = (question or "").strip()
     if not q:
@@ -506,7 +506,7 @@ def digest(fs: M.FilterState, principal: Principal, days: int = 7) -> dict:
     This is the one surface that is purely `delta`, which is exactly why it can
     never collide with a chart: no chart on any page draws a window this narrow.
     """
-    from ..semantic.loader import AS_OF_TS, movement
+    from semantic.loader import AS_OF_TS, movement
 
     df = M.slice_frame(fs, principal)
     codes = set(df["opportunity_code"])
@@ -525,7 +525,7 @@ def digest(fs: M.FilterState, principal: Principal, days: int = 7) -> dict:
         "byField": by_field,
         "stageMoves": [
             {"opportunity": r.opportunity_name, "from": r.old_value, "to": r.new_value,
-             "by": r.changed_by, "date": r.change_date.date().isoformat()}
+             "by": r.changed_by, "date": str(r.change_date)[:10]}
             for r in stage_moves.head(10).itertuples(index=False)
         ],
         "busiest": movers.to_dict("records"),

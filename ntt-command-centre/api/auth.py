@@ -41,7 +41,7 @@ from fastapi import APIRouter, Body, HTTPException
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from .config import (
+from config import (
     ACCESS_DISABLED,
     ACCESS_DISABLED_FILE,
     ACCESS_PASSWORD,

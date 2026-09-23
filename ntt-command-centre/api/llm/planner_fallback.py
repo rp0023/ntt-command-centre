@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import re
 
-from ..semantic.dimensions import REGISTRY
+from semantic.dimensions import REGISTRY
 
 #: Words that name a breakdown, in the order they are tested. The first hit
 #: wins, so the more specific phrase ("line of business") is listed before a

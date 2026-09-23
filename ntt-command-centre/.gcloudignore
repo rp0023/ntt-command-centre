@@ -3,6 +3,7 @@ docs/
 **/__pycache__/
 **/*.pyc
 .venv/
+.myenv/
 .env
 *.log
 data/source/*.xlsx
