@@ -1,0 +1,46 @@
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  -webkit-text-size-adjust: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.35);
+  border-radius: 8px;
+}
+
+.recharts-wrapper,
+.recharts-surface {
+  overflow: visible;
+}
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+  header.MuiAppBar-root,
+  .MuiDrawer-root,
+  .ntt-copilot-dock,
+  .ntt-no-print {
+    display: none !important;
+  }
+  .ntt-app-main {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 48" role="img" aria-label="NTT DATA">
+  <!-- Dynamic Loop (NTT Group symbol) + NTT DATA wordmark in brand colours -->
+  <defs>
+    <linearGradient id="nttLoop" x1="8" y1="4" x2="40" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3D8CC8"/>
+      <stop offset="1" stop-color="#004B86"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#nttLoop)" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 38c-7-1-11-8-8-16 2.4-6.2 9-9.5 15-7.2 3.2 1.2 5.4 3.8 6.2 7"/>
+    <path d="M31 22c1.8-6.5 8.2-10.2 14.8-8.2 6.8 2 10.4 9.2 7.6 16.4-2.6 6.6-10 10-16.8 7.2-3.2-1.3-5.5-3.8-6.6-7"/>
+    <path d="M13.5 14.5c2.2-4.6 7.2-6.8 11.6-4.6 2.6 1.3 4 3.6 4.4 6.2"/>
+  </g>
+  <text x="58" y="33" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="26" letter-spacing="0.5" fill="#001F5B">NTT</text>
+  <text x="122" y="33" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="26" letter-spacing="1.2" fill="#E6007E">DATA</text>
+</svg>
