@@ -1,5 +1,6 @@
 /**
- * The KPI tile row.
+ * Legacy KPI tile row retained for API compatibility. Pages render the same
+ * metrics through MetricBannerGroup.
  *
  * THE RULE THIS COMPONENT EXISTS TO ENFORCE: colour encodes goodness, not sign.
  * `tone` is the colour; `direction` says which way is good. Past-due pipeline

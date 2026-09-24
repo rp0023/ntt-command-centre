@@ -467,9 +467,9 @@ def scoped(a: pd.DataFrame, fs: FilterState, principal: Principal) -> pd.DataFra
     return a.loc[keep].reset_index(drop=True)
 
 
-def summary() -> dict:
+def summary(frame: pd.DataFrame | None = None) -> dict:
     """Counts by category and provenance, for the Risks lens header."""
-    u = unified()
+    u = unified() if frame is None else frame
     return {
         "total": int(len(u)),
         "dsModel": int((u["provenance"] == "ds-model").sum()),

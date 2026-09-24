@@ -18,5 +18,5 @@ cd ntt-command-centre
 | API | Cloud Run `ntt-deal-intelligence-api` (us-central1) | `gcloud run deploy --source ntt-command-centre` with the `NTT_*` environment variables |
 
 Secrets never live in the repository. Locally the API reads `ntt-command-centre/.env`
-(gitignored); on Cloud Run the same names are environment variables. The platform is behind a
-single shared password (`NTT_ACCESS_PASSWORD`).
+(gitignored); on Cloud Run the same names are environment variables. The platform uses 11 individual demo logins. See the application README for account setup;
+local credentials and account hashes are gitignored.

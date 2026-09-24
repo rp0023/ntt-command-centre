@@ -79,6 +79,18 @@ SHAPE_TO_KEY: dict[str, str] = {
 }
 FALLBACK_KEY = "table.compact"
 
+FILTER_DIMS_BY_PERSONA: dict[str, tuple[str, ...]] = {
+    "ae": ("stage", "forecast", "lob", "portfolio", "account", "orderType"),
+    "manager": ("rep", "stage", "lob", "portfolio", "orderType", "quarter"),
+    "executive": ("lob", "portfolio", "industry", "country", "quarter", "orderType", "stage"),
+}
+
+
+def contextual_filters(principal: Principal, *dims: str) -> list[str]:
+    """Only publish contextual controls the current role is allowed to use."""
+    allowed = FILTER_DIMS_BY_PERSONA[principal.key]
+    return [dim for dim in dims if dim in allowed]
+
 
 def select(shape: str) -> str:
     return SHAPE_TO_KEY.get(shape, FALLBACK_KEY)
@@ -95,6 +107,7 @@ def spec(
     measure_label: str = "ACV GP",
     fmt: str = "currency",
     click_dim: str | None = None,
+    filter_dims: list[str] | None = None,
     count_basis: str | None = None,
     basis_note: str | None = None,
     footnote: str | None = None,
@@ -112,6 +125,15 @@ def spec(
             f"chart '{chart_id}' declares no claim keys. Every spec must say what it "
             "puts on screen, or the AI layer cannot avoid repeating it."
         )
+    local_filters = filter_dims or []
+    unknown_filters = [dim for dim in local_filters if dim not in REGISTRY]
+    if unknown_filters:
+        raise ValueError(
+            f"chart '{chart_id}' declares unknown contextual filters "
+            f"{unknown_filters}. Expected registered dimensions."
+        )
+    if len(local_filters) != len(set(local_filters)):
+        raise ValueError(f"chart '{chart_id}' declares duplicate contextual filters")
     return {
         "id": chart_id,
         "title": title,
@@ -135,6 +157,7 @@ def spec(
         "measureLabel": measure_label,
         "format": fmt,
         "clickDim": click_dim,
+        "filterDims": local_filters,
         "countBasis": count_basis,
         "basisNote": basis_note,
         "says": says,
@@ -183,6 +206,7 @@ def open_by_dimension(fs: FilterState, principal: Principal, dim: str) -> dict:
         says=[f"{_measure_key(fs)}.open.by:{dim}"],
         subtitle=f"{fs.measure_label} · {len(df):,} lines",
         measure_label=fs.measure_label, click_dim=dim,
+        filter_dims=contextual_filters(principal, dim),
         count_basis=basis, basis_note=note,
         questions=[
             f"Which {label.lower()} has the most open pipeline?",
@@ -242,6 +266,7 @@ def ageing_stack(fs: FilterState, principal: Principal) -> dict:
         says=[f"{_measure_key(fs)}.open.by:agebucket+forecast"],
         subtitle=f"{fs.measure_label} · split by the rep's own forecast call",
         measure_label=fs.measure_label,
+        filter_dims=contextual_filters(principal, "forecast"),
         count_basis="lines", basis_note="Money is line-grain.",
         footnote="A deal still in Commit weeks after its own close date is the "
                  "combination worth looking at.",
@@ -264,7 +289,7 @@ def gp_bridge(fs: FilterState, principal: Principal) -> dict:
         says=["gap.all.by:quarter", "gp.won.by:quarter"],
         subtitle="Plan, what each quarter delivered, what is still open · gross "
                  "profit, the basis the plan is set in",
-        measure_label="ACV GP",
+        measure_label="ACV GP", filter_dims=contextual_filters(principal, "quarter"),
         footnote=next((s.get("note") for s in steps if s.get("note")), None),
         height=300,
         questions=["Which quarter delivered the most?",
@@ -288,7 +313,7 @@ def month_vs_plan(fs: FilterState, principal: Principal) -> dict:
         says=["gp.won.t:month", "budget.all.t:month"],
         subtitle="Bars are delivered gross profit; the line is the plan, which is "
                  "set in gross profit",
-        measure_label="ACV GP",
+        measure_label="ACV GP", filter_dims=contextual_filters(principal, "quarter"),
         footnote="October to December carry a plan but no closed history — the year "
                  "has not reached them. Their red is a calendar position.",
         height=280,
@@ -357,6 +382,7 @@ def stage_funnel(fs: FilterState, principal: Principal) -> dict:
         subtitle=f"Cohort of {cohort:,} opportunities whose logged history starts at "
                  f"Identification",
         measure_label="Opportunities", fmt="number", click_dim="stage",
+        filter_dims=contextual_filters(principal, "stage"),
         count_basis="opportunities",
         basis_note="Stage is constant within an opportunity.",
         footnote="Anchored on the entry cohort, not a running ratio. Counting every "
@@ -441,6 +467,7 @@ def margin_mekko(fs: FilterState, principal: Principal) -> dict:
         subtitle=f"Column width is revenue · fill is margin against the {blended:.1f}% "
                  f"blended rate",
         measure_label="ACV Revenue",
+        filter_dims=contextual_filters(principal, "lob", "portfolio"),
         count_basis="lines",
         basis_note="LOB and portfolio vary within an opportunity, so this counts lines.",
         footnote="Margin here is SUM(GP)/SUM(revenue) per cell — never the average of "
@@ -486,6 +513,7 @@ def account_treemap(fs: FilterState, principal: Principal, top: int = 20) -> dic
         subtitle=f"{fs.measure_label} · top {top} named · largest account is "
                  f"{top_share:.1f}% of the book",
         measure_label=fs.measure_label, click_dim="account",
+        filter_dims=contextual_filters(principal, "account"),
         count_basis="lines", basis_note="Money is line-grain.",
         footnote="The tail is grouped deliberately. Drawn ungrouped, one tile would "
                  "take a seventh of the area and the rest would be unreadable.",
@@ -544,6 +572,7 @@ def industry_flow(fs: FilterState, principal: Principal) -> dict:
         says=[f"{mk}.all.by:industry+lob", f"{mk}.all.by:lob+stage"],
         subtitle=f"Ribbon width is {fs.measure_word} · top six industries named",
         measure_label=fs.measure_label,
+        filter_dims=contextual_filters(principal, "industry", "lob"),
         count_basis="lines", basis_note="Money is line-grain.",
         footnote="Won and Lost are settled; Open is still in play and is not a result.",
         height=400,
@@ -596,6 +625,7 @@ def stage_path_flow(fs: FilterState, principal: Principal) -> dict:
         says=["count.all.by:stage"],
         subtitle=f"{int(pairs['n'].sum()):,} logged stage changes",
         measure_label="Transitions", fmt="number",
+        filter_dims=contextual_filters(principal, "stage"),
         count_basis="opportunities",
         basis_note="One ribbon per recorded transition, from the change log.",
         footnote="Amber ribbons jump a rung — the qualification steps between have "
@@ -683,6 +713,7 @@ def coverage_heat(fs: FilterState, principal: Principal) -> dict:
                  f"{g['holes']} cells have a target and no pipeline at all · "
                  f"{delivered} already delivered",
         measure_label="Coverage", fmt="number", click_dim="lob",
+        filter_dims=contextual_filters(principal, "lob", "portfolio"),
         count_basis="lines", basis_note="Money is line-grain.",
         footnote=foot.get("note"),
         height=260,
@@ -745,6 +776,7 @@ def stalled_by_rep(fs: FilterState, principal: Principal) -> dict:
         subtitle=f"Open {fs.measure_word} with no logged change in {STALL_DAYS}+ days · "
                  f"{len(r):,} deals",
         measure_label=fs.measure_label, click_dim="rep",
+        filter_dims=contextual_filters(principal, "rep"),
         count_basis="opportunities", basis_note="One count per opportunity.",
         empty_message="Nothing in this scope has been silent for "
                       f"{STALL_DAYS} days or more.",
@@ -796,6 +828,7 @@ def coverage_bullet(fs: FilterState, principal: Principal, dim: str) -> dict:
         subtitle=f"The bar is open gross profit from {window}; the marker is the "
                  f"plan still to deliver · {uncovered} of {len(rows)} below half cover",
         measure_label="ACV GP", click_dim=dim,
+        filter_dims=contextual_filters(principal, dim),
         encoding={"x": "key", "y": "value", "target": "target"},
         count_basis="lines", basis_note="Money is line-grain.",
         footnote=" ".join(n for n in notes if n) or None,
@@ -866,6 +899,7 @@ def rep_benchmark_heat(fs: FilterState, principal: Principal) -> dict:
         says=["winrate.closed.by:rep", "risk.open.by:rep"],
         subtitle="Standard deviations from the all-rep norm · high is worse in every column",
         measure_label="SD from peer norm", fmt="number", click_dim="rep",
+        filter_dims=contextual_filters(principal, "rep"),
         count_basis="opportunities", basis_note="Rates are per owned opportunity.",
         footnote="Behaviour repeats by person and is coachable. Win rate does not vary "
                  "meaningfully by rep in this extract — coach the behaviour, not the "
@@ -900,6 +934,7 @@ def whitespace_table(fs: FilterState, principal: Principal) -> dict:
         says=[f"{_measure_key(fs)}.all.by:account"],
         subtitle="Upside, not risk — framed as the reference guide requires",
         measure_label=fs.measure_label, key="table.compact",
+        filter_dims=contextual_filters(principal, "account"),
         empty_message=(
             "No cross-sell gap in scope — every account above "
             f"{money(ACC.MATERIAL_ACCOUNT_GP)} of gross profit already buys across "
@@ -945,6 +980,7 @@ def cross_sell_list(fs: FilterState, principal: Principal) -> dict:
         says=["xsell.rec.by:account"],
         subtitle="Ranked by how many independent methods agree, not by size",
         measure_label="Peer ACV GP", key="table.compact",
+        filter_dims=contextual_filters(principal, "account"),
         empty_message=(
             "No cross-sell recommendation for your accounts in this scope. The "
             "engine keeps a deliberately short, high-confidence list."),

@@ -1,41 +1,11 @@
-"""
-The API boundary.
-
-The client drew this layer himself on the 11 Sep call: *"transactional data on
-SQL → semantic data where you have your rules, your definitions, your
-calculations → an API interface… **that interface is where the authentication,
-low level security all sits** → your front end."*
-
-So two rules hold in this file and nowhere else:
-
-  1. **Row-level security attaches here.** `X-User-UPN` (or the demo's
-     `?persona=` / `?identity=`) resolves to a Principal, and that principal's
-     predicate is applied to the frame before any aggregation happens
-     downstream. No endpoint reaches a dataframe except through
-     `measures.slice_frame`, which cannot be called without a principal.
-
-  2. **No business logic.** Every number returned below was computed in
-     `api/semantic/`. This module parses query strings, attaches identity, and
-     serialises. If a calculation appears here, it is in the wrong file.
-
-In front of both sits the access gate (`api/auth.py`): one shared password for
-the whole platform, exchanged for a bearer token that every request must
-carry. It is a door, not an identity — it decides whether a caller is in the
-demo at all, and rule 1 still decides what they can see once inside.
-
-`GET /api/v1/measures` and `GET /api/v1/catalog` exist to prove point 2: the
-first returns the raw measure dictionary with no view model at all, the second
-the machine-readable semantic catalog. A second consumer — a notebook, Power BI,
-another team's agent — reads those and gets the same numbers the screen shows,
-by construction.
-"""
+"""Authenticated API boundary. Account identity comes only from the bearer token."""
 
 from __future__ import annotations
 
 import json
 from typing import cast
 
-from fastapi import Body, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 import auth
@@ -112,16 +82,8 @@ def _warm() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _principal(x_user_upn: str | None = None, persona: str | None = None,
-               identity: str | None = None) -> Principal:
-    """
-    Resolve the caller.
-
-    In production the UPN arrives inside an Entra token and `persona`/`identity`
-    do not exist. For the demo the header selector drives them, which is the
-    client's own diagram made visible rather than a way around it.
-    """
-    return PR.resolve(persona=persona, identity=identity, upn=x_user_upn)
+def _principal(request: Request) -> Principal:
+    return auth.principal(request)
 
 
 def _filters(request: Request) -> FilterState:
@@ -156,6 +118,13 @@ def _charts_say(request: Request) -> list[str]:
 @app.get("/healthz")
 @app.get("/api/health")
 def healthz() -> dict:
+    return {"ok": True}
+
+
+@app.get("/api/health/details")
+def health_details(request: Request) -> dict:
+    if _principal(request).key != "executive":
+        raise HTTPException(403, "Executive access required")
     r = report()
     return {
         "ok": True,
@@ -177,10 +146,8 @@ def healthz() -> dict:
 
 
 @app.get("/api/meta")
-def api_meta(x_user_upn: str | None = Header(default=None),
-             persona: str | None = Query(default=None),
-             identity: str | None = Query(default=None)) -> dict:
-    return V.meta(_principal(x_user_upn, persona, identity))
+def api_meta(request: Request) -> dict:
+    return V.meta(_principal(request))
 
 
 # --------------------------------------------------------------------------- #
@@ -189,20 +156,14 @@ def api_meta(x_user_upn: str | None = Header(default=None),
 
 
 @app.get("/api/view")
-def api_view(request: Request, page: str = Query(default=""),
-             x_user_upn: str | None = Header(default=None),
-             persona: str | None = Query(default=None),
-             identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
+def api_view(request: Request, page: str = Query(default="")) -> dict:
+    p = _principal(request)
     return V.view(page or p.persona.home, _filters(request), p)
 
 
 @app.get("/api/actions")
-def api_actions(request: Request, limit: int = Query(default=12, le=40),
-                x_user_upn: str | None = Header(default=None),
-                persona: str | None = Query(default=None),
-                identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
+def api_actions(request: Request, limit: int = Query(default=12, le=40)) -> dict:
+    p = _principal(request)
     return {"actions": ACT.build(_filters(request), p, limit=limit),
             "persona": p.key, "scope": p.identity_label}
 
@@ -213,11 +174,8 @@ def api_actions(request: Request, limit: int = Query(default=12, le=40),
 
 
 @app.get("/api/risk")
-def api_risk(request: Request, limit: int = Query(default=50, le=300),
-             x_user_upn: str | None = Header(default=None),
-             persona: str | None = Query(default=None),
-             identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
+def api_risk(request: Request, limit: int = Query(default=50, le=300)) -> dict:
+    p = _principal(request)
     fs = _filters(request)
     r = P.risk_table()
     codes = set(M.slice_frame(fs, p)["opportunity_code"])
@@ -240,11 +198,8 @@ def api_risk(request: Request, limit: int = Query(default=50, le=300),
 
 
 @app.get("/api/deal/{opportunity_code}")
-def api_deal(opportunity_code: str,
-             x_user_upn: str | None = Header(default=None),
-             persona: str | None = Query(default=None),
-             identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
+def api_deal(opportunity_code: str, request: Request) -> dict:
+    p = _principal(request)
     # RLS on a single record too: a deal outside the principal's scope is a 404,
     # not a redacted 200 — the existence of the record is itself information.
     scoped = set(M.slice_frame(FilterState(), p)["opportunity_code"])
@@ -263,11 +218,8 @@ def api_deal(opportunity_code: str,
 
 
 @app.get("/api/anomalies")
-def api_anomalies(request: Request, limit: int = Query(default=80, le=500),
-                  x_user_upn: str | None = Header(default=None),
-                  persona: str | None = Query(default=None),
-                  identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
+def api_anomalies(request: Request, limit: int = Query(default=80, le=500)) -> dict:
+    p = _principal(request)
     fs = _filters(request)
     a = ANOM.for_persona(p.key)
     if fs.anomaly_category:
@@ -279,7 +231,7 @@ def api_anomalies(request: Request, limit: int = Query(default=80, le=500),
     # with the findings so the risks page applies the same one.
     a = ANOM.scoped(a, fs, p)
     return {
-        "summary": ANOM.summary(),
+        "summary": ANOM.summary(a),
         "taxonomy": {"categories": [{"name": c, "question": ANOM.CATEGORY_BLURB[c]}
                                     for c in ANOM.CATEGORY_ORDER]},
         "findings": a.head(limit).replace({float("nan"): None}).to_dict("records"),
@@ -288,37 +240,33 @@ def api_anomalies(request: Request, limit: int = Query(default=80, le=500),
 
 
 @app.get("/api/accounts")
-def api_accounts(request: Request,
-                 x_user_upn: str | None = Header(default=None),
-                 persona: str | None = Query(default=None),
-                 identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
+def api_accounts(request: Request) -> dict:
+    p = _principal(request)
     fs = _filters(request)
     return {
         "whitespace": ACC.whitespace(fs, p, limit=40),
         "concentration": ACC.concentration(fs, p),
-        "lobValue": ACC.lob_count_value().to_dict("records"),
-        "attach": ACC.attach_matrix().to_dict("records"),
+        "lobValue": ACC.lob_count_value(fs, p).to_dict("records"),
+        "attach": ACC.attach_matrix(fs, p).to_dict("records"),
     }
 
 
 @app.get("/api/account/{account_code}")
-def api_account(account_code: str) -> dict:
-    d = ACC.account_detail(account_code)
+def api_account(account_code: str, request: Request) -> dict:
+    p = _principal(request)
+    d = ACC.account_detail(account_code, FilterState(), p)
     if not d:
         raise HTTPException(status_code=404, detail="no such account")
     # The cross-sell recommendations for this account travel with it, so the
     # drawer never has to make a second call to answer "what should we sell
     # them next".
-    d["crossSell"] = XS.for_account(account_code)
+    d["crossSell"] = [r for r in XS.unified(FilterState(), p, limit=10000)
+                      if r.get("accountCode") == account_code]
     return d
 
 
 @app.get("/api/crosssell")
-def api_crosssell(request: Request,
-                  x_user_upn: str | None = Header(default=None),
-                  persona: str | None = Query(default=None),
-                  identity: str | None = Query(default=None)) -> dict:
+def api_crosssell(request: Request) -> dict:
     """
     The growth surface: recommendations, the plays they group into, and counts.
 
@@ -327,7 +275,7 @@ def api_crosssell(request: Request,
     other people's accounts hidden — a filtered aggregate is a different
     number, not a smaller view of the same one.
     """
-    p = _principal(x_user_upn, persona, identity)
+    p = _principal(request)
     fs = _filters(request)
     return {
         "recommendations": XS.unified(fs, p, limit=100),
@@ -340,11 +288,10 @@ def api_crosssell(request: Request,
 
 
 @app.get("/api/budget")
-def api_budget(request: Request,
-               x_user_upn: str | None = Header(default=None),
-               persona: str | None = Query(default=None),
-               identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
+def api_budget(request: Request) -> dict:
+    p = _principal(request)
+    if not p.may_see("budget"):
+        raise HTTPException(403, "Budget is not available for this role")
     fs = _filters(request)
     return {
         "totals": B.totals(fs, p),
@@ -363,11 +310,8 @@ def api_budget(request: Request,
 
 
 @app.get("/api/ai/brief")
-def api_brief(request: Request, page: str = Query(default=""),
-              x_user_upn: str | None = Header(default=None),
-              persona: str | None = Query(default=None),
-              identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
+def api_brief(request: Request, page: str = Query(default="")) -> dict:
+    p = _principal(request)
     fs = _filters(request)
     page = V.resolve_page(page or p.persona.home, p)
     # The server recomputes what is on screen and unions it with the client's
@@ -380,34 +324,30 @@ def api_brief(request: Request, page: str = Query(default=""),
 @app.get("/api/ai/ask")
 def api_ask(request: Request, q: str = Query(..., min_length=2, max_length=400),
             chart: str | None = Query(default=None, max_length=80),
-            page: str | None = Query(default=None, max_length=40),
-            x_user_upn: str | None = Header(default=None),
-            persona: str | None = Query(default=None),
-            identity: str | None = Query(default=None)) -> dict:
+            page: str | None = Query(default=None, max_length=40)) -> dict:
     """
     `chart` and `page` name the chart a question was typed beside. The chart
     is rebuilt server-side from the id for THIS principal and slice — the
     client's copy of it is never trusted — and the answer is words only.
     """
-    p = _principal(x_user_upn, persona, identity)
+    p = _principal(request)
     return AI.ask(q, _filters(request), p, _charts_say(request), chart_id=chart, page=page)
 
 
 @app.post("/api/ai/explain")
-def api_explain(request: Request, card: dict = Body(...),
-                x_user_upn: str | None = Header(default=None),
-                persona: str | None = Query(default=None),
-                identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
-    return AI.explain(card, _filters(request), p, _charts_say(request))
+def api_explain(request: Request, card: dict = Body(...)) -> dict:
+    p = _principal(request)
+    fs = _filters(request)
+    cards = ACT.build(fs, p, limit=10000)
+    actual = next((c for c in cards if c["key"] == card.get("key")), None)
+    if actual is None:
+        raise HTTPException(404, "No such recommendation in your scope")
+    return AI.explain(actual, fs, p, _charts_say(request))
 
 
 @app.get("/api/ai/next-action/{opportunity_code}")
-def api_next_action(opportunity_code: str, request: Request,
-                    x_user_upn: str | None = Header(default=None),
-                    persona: str | None = Query(default=None),
-                    identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
+def api_next_action(opportunity_code: str, request: Request) -> dict:
+    p = _principal(request)
     scoped = set(M.slice_frame(FilterState(), p)["opportunity_code"])
     if opportunity_code not in scoped:
         raise HTTPException(status_code=404, detail="no such opportunity in your scope")
@@ -415,11 +355,8 @@ def api_next_action(opportunity_code: str, request: Request,
 
 
 @app.get("/api/ai/digest")
-def api_digest(request: Request, days: int = Query(default=7, ge=1, le=90),
-               x_user_upn: str | None = Header(default=None),
-               persona: str | None = Query(default=None),
-               identity: str | None = Query(default=None)) -> dict:
-    p = _principal(x_user_upn, persona, identity)
+def api_digest(request: Request, days: int = Query(default=7, ge=1, le=90)) -> dict:
+    p = _principal(request)
     return AI.digest(_filters(request), p, days)
 
 
@@ -429,17 +366,14 @@ def api_digest(request: Request, days: int = Query(default=7, ge=1, le=90),
 
 
 @app.get("/api/v1/measures")
-def api_measures(request: Request,
-                 x_user_upn: str | None = Header(default=None),
-                 persona: str | None = Query(default=None),
-                 identity: str | None = Query(default=None)) -> dict:
+def api_measures(request: Request) -> dict:
     """
     The raw measure dictionary, unwrapped.
 
     No view model, no chart specs, no prose. If the semantic layer were welded
     to the front end, this endpoint could not exist.
     """
-    p = _principal(x_user_upn, persona, identity)
+    p = _principal(request)
     fs = _filters(request)
     return {
         "asOf": AS_OF.isoformat(),
@@ -452,7 +386,7 @@ def api_measures(request: Request,
 
 
 @app.get("/api/v1/catalog")
-def api_catalog() -> dict:
+def api_catalog(request: Request) -> dict:
     """
     The machine-readable semantic catalog — the context layer the LLM is given.
 
@@ -460,14 +394,13 @@ def api_catalog() -> dict:
     business reads the same description of it that our own model does, and can
     check that the definitions match what the screen shows.
     """
+    if _principal(request).key != "executive":
+        raise HTTPException(403, "Executive access required")
     return {**CAT.build(), "size": CAT.size_report()}
 
 
 @app.post("/api/v1/query")
-def api_query(request: Request, plan: dict = Body(...),
-              x_user_upn: str | None = Header(default=None),
-              persona: str | None = Query(default=None),
-              identity: str | None = Query(default=None)) -> dict:
+def api_query(request: Request, plan: dict = Body(...)) -> dict:
     """
     Execute a query plan directly, without a model in the loop.
 
@@ -475,7 +408,7 @@ def api_query(request: Request, plan: dict = Body(...),
     plan contract can be tested — and demonstrated — independently of whether a
     language model is available or behaving.
     """
-    p = _principal(x_user_upn, persona, identity)
+    p = _principal(request)
     fs = _filters(request)
     try:
         r = Q.execute(plan, fs, p, _charts_say(request))

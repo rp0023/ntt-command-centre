@@ -27,6 +27,7 @@ import type { AskSeed } from "../state/filters";
 import { useChart } from "../charts/useChart";
 import { useApp } from "../state/AppStateProvider";
 import { ChartAsk, ChartAskButton } from "./ChartAsk";
+import { FilterSelect, type MetaDimension } from "./FilterBar";
 
 /** Does this payload have anything to draw? Both wire shapes are checked. */
 function isEmpty(data: ChartSpec["data"]): boolean {
@@ -39,6 +40,7 @@ function isEmpty(data: ChartSpec["data"]): boolean {
 export interface ChartCardProps {
   spec: ChartSpec;
   height?: number;
+  filterDimensions?: MetaDimension[];
   /**
    * Give the card its own Ask. `chartsSay` is what the whole page already
    * claims — the server refuses to answer by repeating it — and `onExpand`
@@ -47,8 +49,8 @@ export interface ChartCardProps {
   ask?: { chartsSay: string[]; onExpand: (question: string, seed: AskSeed) => void };
 }
 
-export function ChartCard({ spec, height, ask }: ChartCardProps) {
-  const { onFilter, state } = useApp();
+export function ChartCard({ spec, height, filterDimensions = [], ask }: ChartCardProps) {
+  const { onFilter, setFilter, state } = useApp();
   const [askOpen, setAskOpen] = useState(false);
   // Focus goes back to the trigger on close. Without this, dismissing the
   // panel drops the caret at the top of the document and a keyboard user has
@@ -80,13 +82,30 @@ export function ChartCard({ spec, height, ask }: ChartCardProps) {
           <h3>{spec.title}</h3>
           {spec.subtitle && <p className="csub">{spec.subtitle}</p>}
         </div>
-        {ask && !empty ? (
-          <ChartAskButton
-            onClick={() => setAskOpen(true)}
-            open={askOpen}
-            chartTitle={spec.title}
-            buttonRef={askButtonRef}
-          />
+        {filterDimensions.length > 0 || (ask && !empty) ? (
+          <div className="card-head__actions">
+            {filterDimensions.length > 0 ? (
+              <div className="card-filters" aria-label={`Filter page from ${spec.title}`}>
+                {filterDimensions.map((dimension) => (
+                  <FilterSelect
+                    key={dimension.key}
+                    dimension={dimension}
+                    value={state.filters[dimension.key]}
+                    onSet={setFilter}
+                    idPrefix={`chart-${spec.id}`}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {ask && !empty ? (
+              <ChartAskButton
+                onClick={() => setAskOpen(true)}
+                open={askOpen}
+                chartTitle={spec.title}
+                buttonRef={askButtonRef}
+              />
+            ) : null}
+          </div>
         ) : null}
       </header>
 

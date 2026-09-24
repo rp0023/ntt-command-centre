@@ -193,16 +193,17 @@ def benchmark_card(opportunity_code: str) -> list[dict]:
         value = row.get(b.feature)
         if value is None or (isinstance(value, float) and np.isnan(value)):
             continue
-        above = float(value) > float(b.benchmark_value)
+        numeric_value = float(str(value))
+        above = numeric_value > float(str(b.benchmark_value))
         verdict = b.above_benchmark if above else b.below_benchmark
         out.append({
             "feature": b.feature,
             "label": b.label,
-            "value": float(value),
-            "benchmark": float(b.benchmark_value),
+            "value": numeric_value,
+            "benchmark": float(str(b.benchmark_value)),
             "benchmarkMethod": b.benchmark_method,
             "direction": b.direction,
-            "correlationWithWin": float(b.corr_with_win),
+            "correlationWithWin": float(str(b.corr_with_win)),
             "verdict": verdict,                       # GREEN | RED
             "aboveBenchmark": bool(above),
             "weakSignal": bool(b.weak_signal),

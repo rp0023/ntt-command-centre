@@ -1,0 +1,136 @@
+.metric-banners {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2) var(--s-3);
+}
+
+.metric-banner {
+  --banner-tone: var(--muted);
+  --banner-tone-rgb: var(--muted-rgb);
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+  min-width: 0;
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--banner-tone);
+  border-radius: var(--r-sm);
+}
+
+.metric-banner--primary {
+  grid-column: 1 / -1;
+  min-height: 88px;
+  padding: var(--s-4) var(--s-5);
+}
+
+.metric-banner--accent { --banner-tone: var(--accent); --banner-tone-rgb: var(--accent-rgb); }
+.metric-banner--good { --banner-tone: var(--good); --banner-tone-rgb: var(--good-rgb); }
+.metric-banner--warn { --banner-tone: var(--warn); --banner-tone-rgb: var(--warn-rgb); }
+.metric-banner--danger { --banner-tone: var(--danger); --banner-tone-rgb: var(--danger-rgb); }
+
+.metric-banner__copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.metric-banner__statement {
+  margin: 0;
+  color: var(--text);
+  font: var(--t-h2);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.metric-banner--primary .metric-banner__statement {
+  font: var(--t-h1);
+  line-height: 1.25;
+}
+
+.metric-banner__subline {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 6px;
+  color: var(--muted);
+  font: var(--t-small);
+  line-height: 1.45;
+}
+
+.metric-banner__anchor {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.metric-banner__anchor--open { z-index: 40; }
+
+.metric-banner__metric {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  margin: -4px 0;
+  padding: 0 3px;
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(var(--muted-rgb), 0.4);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), text-decoration-color var(--dur) var(--ease);
+}
+
+.metric-banner__metric:hover,
+.metric-banner__metric[aria-expanded="true"] {
+  background: rgba(var(--banner-tone-rgb), 0.12);
+  text-decoration-color: currentColor;
+}
+
+.metric-banner__metric--accent { color: var(--accent); }
+.metric-banner__metric--good { color: var(--good); }
+.metric-banner__metric--warn { color: var(--warn); }
+.metric-banner__metric--danger { color: var(--danger); }
+
+.metric-banner__trend {
+  flex: 0 0 180px;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.metric-banner__trend--accent { color: var(--accent); }
+.metric-banner__trend--good { color: var(--good); }
+.metric-banner__trend--warn { color: var(--warn); }
+.metric-banner__trend--danger { color: var(--danger); }
+
+.metric-banner__trend-label {
+  color: var(--muted);
+  font: var(--t-micro);
+  text-align: right;
+}
+
+.metric-banner__trend svg { width: 100%; height: 34px; overflow: visible; }
+.metric-banner__trend-line { fill: none; stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.metric-banner__trend-fill { fill: currentColor; opacity: 0.11; }
+.metric-banner__trend-dot { fill: currentColor; stroke: var(--surface); stroke-width: 1.2; }
+
+.metric-banner-skeleton { height: 74px; }
+.metric-banner-skeleton--primary { grid-column: 1 / -1; height: 88px; }
+
+@media (max-width: 760px) {
+  .metric-banners { grid-template-columns: minmax(0, 1fr); }
+  .metric-banner,
+  .metric-banner--primary { grid-column: auto; min-height: 0; padding: var(--s-3) var(--s-4); }
+  .metric-banner--primary { align-items: flex-start; flex-direction: column; }
+  .metric-banner--primary .metric-banner__statement { font: var(--t-h2); line-height: 1.35; }
+  .metric-banner__trend { width: 100%; flex-basis: auto; }
+  .metric-banner__trend-label { text-align: left; }
+  .metric-banner__metric { min-height: var(--tap, 36px); margin: -7px 0; }
+  .metric-banner-skeleton--primary { grid-column: auto; height: 74px; }
+}

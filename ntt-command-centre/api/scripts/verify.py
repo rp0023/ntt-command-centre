@@ -392,6 +392,8 @@ def main() -> int:
 
     used_keys: set[str] = set()
     claims_ok = True
+    banners_ok = True
+    contextual_filters_ok = True
     for key in PR.PERSONA_KEYS:
         p = PR.resolve(key)
         for page in [k for k, v in V.PAGES.items() if v[0] == key]:
@@ -400,9 +402,32 @@ def main() -> int:
                 used_keys.add(ch["repositoryKey"])
                 if not ch.get("says"):
                     claims_ok = False
+                filter_dims = ch.get("filterDims", [])
+                contextual_filters_ok = contextual_filters_ok and (
+                    len(filter_dims) == len(set(filter_dims))
+                    and all(dim in C.REGISTRY for dim in filter_dims)
+                    and all(dim in C.FILTER_DIMS_BY_PERSONA[key] for dim in filter_dims)
+                )
             if not payload["kpis"]:
                 claims_ok = False
+            banners = payload.get("metricBanners", [])
+            metric_keys = [kpi["key"] for kpi in payload["kpis"]]
+            referenced = [part["metricKey"] for banner in banners
+                          for part in banner["statement"] if part["kind"] == "metric"]
+            valid_trends = all(
+                not banner.get("trendMetricKey")
+                or len(next(kpi for kpi in payload["kpis"]
+                            if kpi["key"] == banner["trendMetricKey"])["spark"]) >= 3
+                for banner in banners)
+            banners_ok = banners_ok and (
+                len(banners) == 3
+                and [b["prominence"] for b in banners] == ["primary", "supporting", "supporting"]
+                and len(referenced) == len(set(referenced))
+                and set(referenced) == set(metric_keys)
+                and valid_trends)
     assert_true("every chart declares what it says", claims_ok)
+    assert_true("contextual chart filters are valid for the persona", contextual_filters_ok)
+    assert_true("every page summarizes each metric once in three banners", banners_ok)
     check("distinct chart types in use", len(used_keys), 14)
 
     # One chart, one page. Within a persona a chart id may appear on exactly

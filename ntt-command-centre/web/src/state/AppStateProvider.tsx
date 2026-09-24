@@ -15,11 +15,11 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import { useSession } from "./SessionContext";
 import type { Ctx } from "../api/client";
-import type { DimKey, Lens, Measure, PersonaKey } from "../api/types";
+import type { DimKey, Lens, Measure } from "../api/types";
 import {
   INITIAL,
-  PERSONA_HOME,
   type Action,
   type AppState,
   type AskSeed,
@@ -33,10 +33,9 @@ interface Api {
   dispatch: (a: Action) => void;
   /** The context every API call carries. Memoised so effects do not re-fire. */
   ctx: Ctx;
-  setPersona: (p: PersonaKey, identity?: string) => void;
-  setIdentity: (id: string) => void;
   setPage: (p: Lens) => void;
   onFilter: (dim: DimKey, value: string) => void;
+  setFilter: (dim: DimKey, value: string | null) => void;
   clearFilters: () => void;
   setMeasure: (m: Measure) => void;
   /** Open the main Ask panel, optionally about a question and with turns carried over from a chart's Ask. */
@@ -49,14 +48,22 @@ interface Api {
 const C = createContext<Api | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, INITIAL, (init) => {
-    const fromUrl = fromQuery(window.location.search);
-    const merged = { ...init, ...fromUrl };
-    // A URL naming a page that belongs to another persona lands on this
-    // persona's home rather than on an error.
-    if (fromUrl.persona && !fromUrl.page) merged.page = PERSONA_HOME[fromUrl.persona];
-    return { ...merged, filters: { ...init.filters, ...(fromUrl.filters ?? {}) } };
+  const user = useSession();
+  const enforce = (s: AppState): AppState => ({
+    ...s, persona: user.role, identity: user.identity,
+    page: user.pages.includes(s.page) ? s.page : user.home,
   });
+  const [state, dispatch] = useReducer(
+    (s: AppState, action: Action) => enforce(reducer(s, action)),
+    INITIAL,
+    (init) => {
+      const parsed = fromQuery(window.location.search);
+      const permitted = !parsed.page || user.pages.includes(parsed.page);
+      return enforce({ ...init, ...parsed, page: parsed.page ?? user.home,
+        filters: permitted ? { ...init.filters, ...parsed.filters } : { ...init.filters },
+        drawer: permitted ? parsed.drawer ?? null : null });
+    },
+  );
 
   const first = useRef(true);
   useEffect(() => {
@@ -97,10 +104,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       state,
       dispatch,
       ctx,
-      setPersona: (p, identity) => dispatch({ type: "persona", persona: p, identity }),
-      setIdentity: (identity) => dispatch({ type: "identity", identity }),
       setPage: (page) => dispatch({ type: "page", page }),
       onFilter: (dim, value) => dispatch({ type: "toggleFilter", dim, value }),
+      setFilter: (dim, value) => dispatch({ type: "setFilter", dim, value }),
       clearFilters: () => dispatch({ type: "clearFilters" }),
       setMeasure: (measure) => dispatch({ type: "measure", measure }),
       openAsk: (query, seed) => dispatch({ type: "ask", open: true, query, seed }),

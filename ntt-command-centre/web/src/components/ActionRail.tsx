@@ -1,5 +1,5 @@
 /**
- * ActionRail — the band of AI-surfaced actions ("Do these next").
+ * ActionRail — the ranked worklist of AI-surfaced actions ("Do these next").
  *
  * This is the component the product is for. A chart tells you the shape of the
  * quarter; this tells you what to do in the next two hours, and — crucially —
@@ -7,9 +7,9 @@
  *
  * The shape of the thing: a header strip that lets the reader narrow the feed
  * (All · Critical · High · Risks · Opportunities) and re-order it (the server's
- * rank, value at stake, urgency); a grid of compact, equal-height cards that
- * each carry one headline, one big number and one urgency; and ONE expanded
- * panel at a time that opens under the selected card's row with the why, the
+ * rank, value at stake, urgency); a single-column list of concrete next steps
+ * with their business context, owner, value and urgency; and ONE expanded
+ * panel at a time that opens under the selected item with the why, the
  * rule, the next step and the explanation. Selection is component state, not
  * URL state: which card is open is a reading position, not a view of the data,
  * and it should not survive a reload or pollute a shared link.
@@ -533,8 +533,8 @@ export function ActionRail({
           {asOf ? <span className="arail-head__asof">as of {asOf}</span> : null}
         </div>
         <p className="arail-head__note">
-          Ranked by value at stake against urgency. Open a card for why it fired and what to
-          do about it.
+          Ranked by value at stake against urgency. Open an action for the evidence and rule
+          behind it.
         </p>
 
         {showList ? (
@@ -643,8 +643,8 @@ export function ActionRail({
           </button>
         </div>
       ) : (
-        // While one card is open the list says so, and the stylesheet softens
-        // every other card so the eye stays on the chosen one and its detail row.
+        // While one action is open the list says so, and the stylesheet softens
+        // every other item so the eye stays on the chosen one and its detail row.
         <ul className="arail-list" ref={listRef} data-focused={expandedKey ? "true" : undefined}>
           {items}
         </ul>
@@ -654,8 +654,8 @@ export function ActionRail({
 }
 
 /* ========================================================================== *
- * The compact card. One height for every card in a row: a one-line top strip,
- * a headline clamped to two lines and reserved at two, and a one-line foot.
+ * One worklist row. The concrete next step leads; the condition that triggered
+ * it, owner, value and urgency provide the context needed to prioritise it.
  * ========================================================================== */
 
 function ActionRailCard({
@@ -699,47 +699,52 @@ function ActionRailCard({
       style={{ "--i": index } as CSSProperties}
       onClick={onCardClick}
     >
-      <div className="arail-card__top">
-        <span className="arail-card__rank" aria-hidden="true">
-          {card.n}
-        </span>
+      <span className="arail-card__rank" aria-hidden="true">
+        {card.n}
+      </span>
+
+      <div className="arail-card__body">
         <span className="arail-card__entity" title={`${card.entity.type} · ${card.entity.label}`}>
           <span className="arail-card__entity-type">{card.entity.type}</span>
+          <span aria-hidden="true">·</span>
           <span className="arail-card__entity-label">{card.entity.label}</span>
         </span>
-        <span className="arail-pill">
-          <span className="arail__sr">Urgency: </span>
-          {card.urgencyLabel}
-        </span>
-      </div>
-
-      <h3 className="arail-card__headline" title={card.headline}>
-        <span className="arail__sr">Priority {card.n}. </span>
-        {card.headline}
-      </h3>
-
-      <div className="arail-card__foot">
-        <span className="arail-card__value">
-          <span className="arail-card__value-num">{money(card.valueAtStake)}</span>
-          <span className="arail-card__value-label">{opportunity ? "in play" : "at risk"}</span>
-        </span>
+        <h3 className="arail-card__headline" title={card.nextStep}>
+          <span className="arail__sr">Priority {card.n}. Action: </span>
+          {card.nextStep}
+        </h3>
+        <p className="arail-card__trigger" title={card.headline}>
+          <span className="arail-card__trigger-label">Triggered by</span>
+          {card.headline}
+        </p>
         <span className="arail-card__owner" title={card.owner}>
-          <span className="arail__sr">Owner: </span>
+          <span className="arail-card__owner-label">Owner</span>
           {card.owner}
         </span>
-        <button
-          type="button"
-          className="arail-card__more"
-          aria-expanded={open}
-          aria-controls={panelId}
-          onClick={() => onToggle(card.key)}
-        >
-          {open ? "Close" : "Details"}
-          <svg className="arail-card__chev" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-            <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
       </div>
+
+      <div className="arail-card__value">
+          <span className="arail-card__value-num">{money(card.valueAtStake)}</span>
+          <span className="arail-card__value-label">{opportunity ? "in play" : "at risk"}</span>
+      </div>
+
+      <span className="arail-pill">
+        <span className="arail__sr">Urgency: </span>
+        {card.urgencyLabel}
+      </span>
+
+      <button
+        type="button"
+        className="arail-card__more"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => onToggle(card.key)}
+      >
+        {open ? "Close" : "Details"}
+        <svg className="arail-card__chev" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+          <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
     </li>
   );
 }

@@ -30,3 +30,8 @@ dist/
 
 # The access gate's dev switch (api/auth.py): its presence turns the password off locally.
 .access-disabled
+
+# Server-only demo hashes/signing secret and local walkthrough passwords.
+.demo-accounts.json
+Context/Plans/DEMO_CREDENTIALS.local.md
+.test-artifacts/

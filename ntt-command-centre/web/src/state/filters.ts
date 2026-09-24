@@ -1,18 +1,3 @@
-/**
- * All app state, and its mirror in the URL.
- *
- * Nothing in this app ever opens a window. Persona, identity, page, every
- * filter, the measure toggle, the theme and the Ask overlay all live in the
- * query string and are written with `pushState`, so any view is reproducible
- * from its URL — which is also how a link in an email lands someone on exactly
- * the screen it is about.
- *
- * Identity is state, not a filter, and the distinction matters: a filter
- * narrows what you look at, an identity changes what you are ALLOWED to look
- * at. The server resolves the row-level predicate from the identity; putting it
- * in the same bucket as `lob=Security` would make widening your own scope a
- * query-string edit.
- */
 import type { AskResponse, DimKey, Lens, Measure, PersonaKey } from "../api/types";
 
 /**
@@ -143,8 +128,6 @@ export function reducer(s: AppState, a: Action): AppState {
 
 export function toQuery(s: AppState): string {
   const p = new URLSearchParams();
-  p.set("as", s.persona);
-  if (s.identity) p.set("id", s.identity);
   p.set("page", s.page);
   if (s.measure !== "gp") p.set("measure", s.measure);
   for (const k of DIM_KEYS) if (s.filters[k]) p.set(k, s.filters[k] as string);
@@ -155,7 +138,6 @@ export function toQuery(s: AppState): string {
 
 export function fromQuery(search: string): Partial<AppState> {
   const p = new URLSearchParams(search);
-  const persona = p.get("as");
   const page = p.get("page");
   const filters: Partial<FilterMap> = {};
   for (const k of DIM_KEYS) {
@@ -163,17 +145,11 @@ export function fromQuery(search: string): Partial<AppState> {
     if (v) filters[k] = v;
   }
   const out: Partial<AppState> = { filters: filters as FilterMap };
-  if (persona === "ae" || persona === "manager" || persona === "executive") {
-    out.persona = persona;
-  }
   if (page) out.page = page as Lens;
-  const id = p.get("id");
-  if (id) out.identity = id;
+  out.ask = p.get("ask") === "1";
+  out.drawer = p.get("drawer");
   const m = p.get("measure");
-  if (m === "revenue" || m === "gp") out.measure = m;
-  if (p.get("ask") === "1") out.ask = true;
-  const d = p.get("drawer");
-  if (d) out.drawer = d;
+  out.measure = m === "revenue" ? "revenue" : "gp";
   return out;
 }
 

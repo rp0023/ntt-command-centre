@@ -153,31 +153,17 @@
   color: var(--accent);
 }
 
-/* ------------------------------------------------------------------- grid
-   Three columns wide, two at 900, one below. minmax(0, 1fr) so a long label
-   cannot push a column wider than its share; stretch so every card in a row
-   is the height of the tallest, which — with the headline reserved at two
-   lines — is the same height. */
+/* ---------------------------------------------------------------- worklist
+   The action feed is a single ranked list. Every row uses the same columns so
+   the reader can scan next step, impact, urgency and details vertically. */
 .arail-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--s-3);
+  gap: var(--s-2);
   align-items: stretch;
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-@media (min-width: 900px) {
-  .arail-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1280px) {
-  .arail-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 /* ------------------------------------------------------------------- tone */
@@ -219,11 +205,12 @@
 /* ------------------------------------------------------------------- card */
 .arail-card {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(84px, auto) auto auto;
+  align-items: center;
+  gap: var(--s-3);
   min-width: 0;
-  padding: var(--s-3) var(--s-4);
+  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
   background: var(--surface);
   border: 1px solid var(--line);
   border-left: 3px solid var(--arail-tone);
@@ -295,15 +282,7 @@
 }
 
 /* The pointer from the open card to its panel in the row below. */
-.arail-card.is-open::after {
-  content: "";
-  position: absolute;
-  left: 28px;
-  bottom: -9px;
-  border: 8px solid transparent;
-  border-bottom: 0;
-  border-top-color: var(--arail-tone);
-}
+.arail-card.is-open::after { content: none; }
 
 @keyframes arail-in {
   from {
@@ -316,11 +295,10 @@
   }
 }
 
-/* top strip: rank · entity · urgency */
-.arail-card__top {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
+/* primary action and supporting context */
+.arail-card__body {
+  display: grid;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -339,10 +317,9 @@
 }
 
 .arail-card__entity {
-  flex: 1 1 auto;
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -380,39 +357,45 @@
   white-space: nowrap;
 }
 
-/* Two lines, and two lines reserved, so a one-line headline does not make
-   its card shorter than its neighbours. */
 .arail-card__headline {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  min-height: calc(2 * 1.35em);
   margin: 0;
-  font: var(--t-h3);
-  font-size: var(--fs-h3, 14px);
+  font: var(--t-body-strong);
+  font-size: var(--fs-body, 13.5px);
+  line-height: 1.4;
   color: var(--text);
   overflow-wrap: anywhere;
 }
 
-/* foot: the one big number · owner · details */
-.arail-card__foot {
+.arail-card__trigger {
   display: flex;
-  align-items: flex-end;
-  gap: var(--s-3);
+  align-items: baseline;
+  gap: 6px;
   min-width: 0;
-  margin-top: auto;
+  color: var(--muted);
+  font: var(--t-small);
+  font-size: var(--fs-small, 12.5px);
+  line-height: 1.35;
+}
+
+.arail-card__trigger-label,
+.arail-card__owner-label {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .arail-card__value {
-  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   min-width: 0;
+  text-align: right;
 }
 
 .arail-card__value-num {
-  font: var(--t-h2);
+  font: var(--t-h3);
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
   color: var(--text);
@@ -426,9 +409,10 @@
 }
 
 .arail-card__owner {
-  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   min-width: 0;
-  padding-bottom: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -440,12 +424,11 @@
 /* A tap-floor button whose negative margins keep the foot to one text line:
    the card's own padding absorbs the overhang. */
 .arail-card__more {
-  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
   min-height: var(--tap, 36px);
-  margin: -6px -8px -6px 0;
+  margin: 0;
   padding: 0 10px 0 12px;
   border-radius: var(--r-pill);
   color: var(--text-2);
@@ -454,6 +437,20 @@
   font-weight: 590;
   white-space: nowrap;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+@media (max-width: 760px) {
+  .arail-card {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: var(--s-2);
+    padding: var(--s-3);
+  }
+
+  .arail-card__rank { grid-row: 1; grid-column: 1; align-self: start; }
+  .arail-card__body { grid-row: 1; grid-column: 2 / -1; }
+  .arail-card__value { grid-row: 2; grid-column: 2; align-items: flex-start; text-align: left; }
+  .arail-card > .arail-pill { grid-row: 2; grid-column: 3; }
+  .arail-card__more { grid-row: 3; grid-column: 2 / -1; justify-self: end; }
 }
 
 .arail-card:hover .arail-card__more,

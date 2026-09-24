@@ -8,6 +8,60 @@ React + TypeScript + Vite with D3 for every visualisation; FastAPI + pandas for 
 ./run.sh verify     # the regression harness; exit code is the failure count
 ```
 
+## Demo login and local startup
+
+The login page uses email and password. Each account has a fixed role and scope:
+four Sales reps (Brian Thompson, Karen Phillips, Melissa Adams, Scott Carter),
+six existing pod managers, and the North America Executive. Switch users by signing out
+from the profile menu. Existing shared-password sessions no longer work.
+
+PowerShell, from `ntt-command-centre/`, using the existing `api/myenv`:
+
+```powershell
+.\api\myenv\Scripts\python.exe -m api.scripts.setup_demo_accounts
+.\api\myenv\Scripts\python.exe -m uvicorn api.main:app --host 127.0.0.1 --port 8808
+```
+
+In a second terminal, from `ntt-command-centre/web/`:
+
+```powershell
+npm.cmd run dev
+```
+
+Open http://localhost:5178. The generated passwords are in
+`../Context/Plans/DEMO_CREDENTIALS.local.md`. Setup is idempotent and preserves existing
+passwords. The sheet is local and gitignored; do not publish it.
+
+If using a different Python environment, substitute its Python executable. Install
+`requirements.txt` into that environment when needed. Always start the API from
+`ntt-command-centre/` as `api.main:app` so package imports resolve consistently.
+
+The server-only `.demo-accounts.json` contains password hashes and a generated signing
+secret. It is excluded from Git, Docker and Cloud Run uploads. For deployment, provision
+the account file as a secret-mounted file and set `NTT_DEMO_ACCOUNTS_FILE` to its path;
+set `NTT_ACCESS_SECRET` to override the generated signing secret if required.
+Sessions expire after eight hours. Browser sign-out removes the local token; it does not
+revoke an already-copied token before expiry. Disabling an account in the registry takes
+effect on subsequent requests.
+
+Unauthenticated health probes (`/healthz`, `/api/health`) return only `ok`.
+`/api/health/details` requires an Executive session. Business endpoints derive identity
+from the bearer token, ignoring caller-supplied persona or UPN values.
+
+### Verification
+
+```powershell
+.\api\myenv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\api\myenv\Scripts\python.exe -X utf8 -m api.scripts.verify
+.\api\myenv\Scripts\python.exe -X utf8 -m unittest api.scripts.test_auth -v
+# After building web/; requires installed Chrome and local account setup:
+.\api\myenv\Scripts\python.exe -X utf8 -m api.scripts.verify_login_browser
+```
+
+The browser harness serves the built frontend and API on a temporary loopback port,
+checks every login, and saves screenshots under `web/.test-artifacts/` (gitignored).
+It disables external model calls and stops its server when complete.
+
 ---
 
 ## What it is
@@ -85,7 +139,7 @@ risk, what is the variable driving it".
 
 ---
 
-## Three personas, fourteen pages
+## Three personas, fifteen pages
 
 Persona changes the **row set**, not the emphasis. The predicate is applied in `slice_frame` before
 any aggregation — filtering after would leak the denominator and quietly make every percentage wrong.
@@ -102,7 +156,7 @@ executive *reallocate coverage to this LOB*.
 
 **Pods are derived and the product says so.** The extract has no manager or team column. The 70 reps
 are snake-drafted by owned GP into 6 pods so every pod holds a comparable mix; the rule is printed
-in the persona switcher rather than the roster being passed off as a source field.
+in the manager profile rather than the roster being passed off as a source field.
 
 ---
 
@@ -114,13 +168,14 @@ right were right, and re-inventing them would have been vanity.
 | | |
 |---|---|
 | **Grouped sidebar** | Not a tab rail. Fourteen pages across three profiles is a product, so pages are grouped ("Today / My book / Me", "The read / The numbers / The decisions") and each item carries its page's stated question as its second line — *Calibration* alone does not tell you whether it is the page you want. Built from `meta.pages`, so a profile cannot see the name of someone else's page. |
-| **Filter deck** | Every validated dimension gets a control, per persona — an AE has no rep selector because there is one rep in their scope. Selecting dispatches to the reducer and refetches; **nothing is filtered on the client**, because a client-side filter gives a narrowed numerator over an unfiltered denominator and every percentage on the page goes quietly wrong. |
-| **KPI tiles** | Icon, value, sub, and a sparkline **only where a real series exists**. Open pipeline is reconstructed honestly — at each month end a deal was open if it had been created and had not yet closed — and snapshot measures with no history get no line at all, because a flat stroke under a number implies a trend was checked. Past-due history is deliberately *not* offered: the committed close date moved over each deal's life and the fact table keeps only the final value. |
+| **Contextual filters** | A dimension represented by a chart is selected in that chart's header; remaining role-permitted dimensions live in the page's compact **More filters** popover. Active filters stay visible below the question. Every selection refetches and recomputes the whole page on the server, because filtering browser-side would leave percentages with the wrong denominator. |
+| **Metric summary banners** | One primary and two supporting banners retain every page metric as a referenceable figure, with a sparkline **only where a real series exists**. Snapshot measures with no history get no invented trend. |
 | **Findings bell** | Badged with what needs a decision now, not an unread count. There is nothing to mark as read. |
 | **Ask** | In the header and as a floating action, because it must be reachable from every page and the header collapses on narrow screens. |
 
-Below 1100px the rail becomes a drawer and the shell a single column; below 720px the filter deck
-scrolls sideways as one row rather than eating the fold. The layout is checked at 375px.
+Below 1100px the rail becomes a drawer and the shell a single column. Below 720px the page heading,
+measure switch and contextual chart controls wrap into touch-friendly rows; More filters uses a
+single-column popover. The layout is checked at 375px.
 
 ---
 
@@ -263,7 +318,7 @@ api/main.py               THE API BOUNDARY — auth and RLS attach here and nowh
         │
 web/src/                  THE FRONT END — draws payloads, computes nothing
            charts/        the D3 repository, indexed by data shape
-           lenses/        one page template, fourteen pages
+           lenses/        one page template, fifteen pages
            state/         one reducer, mirrored into the URL
 ```
 
@@ -283,7 +338,8 @@ Front end → Vercel (`npm run build`, output `web/dist`, root directory `web/`)
 
 | Variable | What |
 |---|---|
-| `NTT_ACCESS_PASSWORD` | The one shared password on the whole platform (default `ntt@2026`). `NTT_ACCESS_SECRET` signs the bearer tokens; `NTT_ACCESS_DISABLED=1` or a `.access-disabled` file beside this README turns the gate off for local scripts. |
+| `NTT_DEMO_ACCOUNTS_FILE` | Server-only account JSON; defaults to `.demo-accounts.json`. Generate locally with the setup command and mount securely on Cloud Run. |
+| `NTT_ACCESS_SECRET` | Optional signing-secret override; otherwise the generated registry secret is used. |
 | `NTT_ANTHROPIC_KEY` | Claude, first in the chain. `NTT_ANTHROPIC_MODEL` defaults to `claude-opus-5`. |
 | `NTT_GEMINI_KEYS`, `NTT_OPENROUTER_KEY` | The free-tier fallbacks. |
 | `NTT_ALLOWED_ORIGINS` | The front end's origins, comma-separated. |
@@ -293,5 +349,4 @@ Front end → Vercel (`npm run build`, output `web/dist`, root directory `web/`)
 Set `VITE_API_BASE` on the front end when the two halves are not same-origin.
 
 **No key is committed.** Locally they come from a gitignored `.env` beside this README; on Cloud Run
-they are environment variables. The password is not identity — row-level security still comes from
-the persona switch — it is the door.
+they are environment variables. The server resolves each session to its assigned role and data scope; the browser cannot switch that identity.

@@ -34,7 +34,10 @@ MATERIAL_ACCOUNT_GP = 25_000
 @functools.lru_cache(maxsize=1)
 def account_profile() -> pd.DataFrame:
     """One row per account: what they buy, from whom, and how much."""
-    f = facts()
+    return _profile(facts())
+
+
+def _profile(f: pd.DataFrame) -> pd.DataFrame:
     g = f.groupby("account_code")
     base = pd.DataFrame({
         "account_name": g["account_name"].first(),
@@ -48,8 +51,8 @@ def account_profile() -> pd.DataFrame:
         "opportunities": g["opportunity_code"].nunique(),
         "lob_count": g["lob"].nunique(),
         "portfolio_count": g["portfolio"].nunique(),
-        "won_gp": g.apply(lambda d: d.loc[d["is_won"], "acv_gp"].sum(), include_groups=False),
-        "open_gp": g.apply(lambda d: d.loc[d["is_open"], "acv_gp"].sum(), include_groups=False),
+        "won_gp": f["acv_gp"].where(f["is_won"], 0).groupby(f["account_code"]).sum(),
+        "open_gp": f["acv_gp"].where(f["is_open"], 0).groupby(f["account_code"]).sum(),
     })
     base["gm"] = np.where(base["revenue"] != 0, 100 * base["gp"] / base["revenue"], np.nan)
 
@@ -67,8 +70,7 @@ def account_profile() -> pd.DataFrame:
     return base.sort_values("gp", ascending=False).reset_index()
 
 
-@functools.lru_cache(maxsize=1)
-def attach_matrix() -> pd.DataFrame:
+def attach_matrix(fs: FilterState | None = None, principal: Principal | None = None) -> pd.DataFrame:
     """
     P(account buys B | account buys A) for every ordered pair of LOBs.
 
@@ -77,28 +79,27 @@ def attach_matrix() -> pd.DataFrame:
     Networking buyers mostly do not hold Security, then the play is to attach
     Security to the Networking base — not the reverse, which is already done.
     """
-    p = account_profile()
+    p = _profile(slice_frame(fs or FilterState(), principal)) if principal else account_profile()
     rows = []
     for a in LOB_ORDER:
-        has_a = p[p["lobs"].map(lambda s, _a=a: _a in s)]
+        has_a = p.loc[p["lobs"].map(lambda s, _a=a: _a in s).astype(bool)]
         for b in LOB_ORDER:
             if a == b:
                 continue
-            both = has_a["lobs"].map(lambda s, _b=b: _b in s).sum()
+            has_b = has_a["lobs"].map(lambda s, _b=b: _b in s).astype(bool)
+            both = has_b.sum()
             rows.append({
                 "given": a, "then": b,
                 "accountsWithGiven": int(len(has_a)),
                 "accountsWithBoth": int(both),
                 "attachRate": float(both / len(has_a)) if len(has_a) else 0.0,
                 "gapAccounts": int(len(has_a) - both),
-                "gapGp": float(has_a.loc[~has_a["lobs"].map(
-                    lambda s, _b=b: _b in s), "gp"].sum()),
+                "gapGp": float(has_a.loc[~has_b, "gp"].sum()),
             })
     return pd.DataFrame(rows)
 
 
-@functools.lru_cache(maxsize=1)
-def lob_count_value() -> pd.DataFrame:
+def lob_count_value(fs: FilterState | None = None, principal: Principal | None = None) -> pd.DataFrame:
     """
     Median account value by how many LOBs that account buys.
 
@@ -106,7 +107,7 @@ def lob_count_value() -> pd.DataFrame:
     and it must be reported as a MEDIAN with its sample size — the mean is
     wrecked by one account holding 14.5% of all gross profit.
     """
-    p = account_profile()
+    p = _profile(slice_frame(fs or FilterState(), principal)) if principal else account_profile()
     g = p.groupby("lob_count").agg(
         accounts=("gp", "size"),
         medianGp=("gp", "median"),
@@ -115,7 +116,7 @@ def lob_count_value() -> pd.DataFrame:
     ).reset_index()
     total = float(p["gp"].sum())
     g["shareOfGp"] = 100 * g["totalGp"] / total if total else 0.0
-    g["shareOfAccounts"] = 100 * g["accounts"] / len(p)
+    g["shareOfAccounts"] = 100 * g["accounts"] / len(p) if len(p) else 0.0
     return g
 
 
@@ -131,7 +132,7 @@ def whitespace(fs: FilterState, principal: Principal, limit: int = 40) -> list[d
     """
     scoped = slice_frame(fs, principal)
     codes = set(scoped["account_code"])
-    p = account_profile()
+    p = _profile(scoped)
     p = p[p["account_code"].isin(codes)]
     p = p[(p["gp"] >= MATERIAL_ACCOUNT_GP) & (p["lob_count"] < len(LOB_ORDER))]
 
@@ -258,14 +259,14 @@ def concentration(fs: FilterState, principal: Principal, top: int = 20) -> dict:
     }
 
 
-def account_detail(account_code: str) -> dict | None:
+def account_detail(account_code: str, fs: FilterState | None = None, principal: Principal | None = None) -> dict | None:
     """The drill-down behind a whitespace or concentration card."""
-    p = account_profile()
+    f = slice_frame(fs or FilterState(), principal) if principal else facts()
+    p = _profile(f)
     row = p[p["account_code"] == account_code]
     if row.empty:
         return None
     row = row.iloc[0]
-    f = facts()
     lines = f[f["account_code"] == account_code]
     grid = lines.groupby(["lob", "portfolio"])["acv_gp"].sum().reset_index()
     return {
@@ -290,5 +291,5 @@ def account_detail(account_code: str) -> dict | None:
 
 
 def reset_caches() -> None:
-    for fn in (account_profile, attach_matrix, lob_count_value):
+    for fn in (account_profile,):
         fn.cache_clear()

@@ -1,5 +1,5 @@
 /**
- * The shell: header, sidebar, filter deck, page, overlays. Nothing else.
+ * The shell: header, sidebar, page, overlays. Nothing else.
  *
  * Navigation is built from `meta.pages`, which the server derives from the
  * persona — so the sidebar is genuinely different for each of the three
@@ -13,7 +13,6 @@
  * screen three times).
  */
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FilterBar } from "./components/FilterBar";
 import { Header } from "./components/Header";
 import { SidebarNav } from "./components/SidebarNav";
 import { SUGGESTIONS } from "./components/askSuggestions";
@@ -21,7 +20,6 @@ import { Glyph } from "./components/askGlyphs";
 import { PageView } from "./lenses/PageView";
 import { useMeta, useView } from "./lenses/useView";
 import { useApp } from "./state/AppStateProvider";
-import type { DimKey } from "./api/types";
 
 const AskPanel = lazy(() =>
   import("./components/AskPanel").then((m) => ({ default: m.AskPanel })),
@@ -31,8 +29,7 @@ const DealDrawer = lazy(() =>
 );
 
 export default function App() {
-  const { state, setPage, dispatch, clearFilters, setMeasure, openAsk, closeAsk, closeDrawer } =
-    useApp();
+  const { state, setPage, openAsk, closeAsk, closeDrawer } = useApp();
   const meta = useMeta();
   const view = useView();
   const [railOpen, setRailOpen] = useState(true);
@@ -97,17 +94,8 @@ export default function App() {
         </aside>
 
         <div className="body">
-          <FilterBar
-            meta={meta.data}
-            persona={state.persona}
-            active={state.filters}
-            measure={state.measure}
-            onSet={(dim: DimKey, value) => dispatch({ type: "setFilter", dim, value })}
-            onClear={clearFilters}
-            onMeasure={setMeasure}
-          />
           <main className="main">
-            <PageView />
+            <PageView meta={meta.data} />
           </main>
         </div>
       </div>

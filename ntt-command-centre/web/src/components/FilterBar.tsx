@@ -1,120 +1,152 @@
-/**
- * The filter deck.
- *
- * Until this existed the only way to narrow the page was to click a chart mark,
- * which is a fine gesture and a terrible only-option: it means a question you
- * cannot already see the answer to cannot be asked. Every validated dimension
- * now has a control.
- *
- * Two things it does NOT do, on purpose:
- *
- * **It does not filter on the client.** Selecting a value dispatches to the
- * reducer, which puts it in the URL and refetches; the server narrows the frame
- * before it aggregates. A client-side filter would produce a numerator over an
- * unfiltered denominator and every percentage on the page would quietly be wrong.
- *
- * **It does not offer a dimension the persona cannot use.** An AE has no rep
- * selector — there is exactly one rep in their scope — and the values in each
- * list are the ones present in THEIR rows, served by `/api/meta`, so a control
- * can never offer a value that returns nothing.
- */
+/** Reusable selectors for the one server-side page slice. */
+import { useEffect, useId, useRef, useState } from "react";
 import type { DimKey, Measure, MetaPayload, PersonaKey } from "../api/types";
 
-/** Which dimensions each profile may slice by, in the order they think in. */
-const FOR_PERSONA: Record<PersonaKey, DimKey[]> = {
+export type MetaDimension = MetaPayload["dimensions"][number];
+
+export const FILTER_DIMS_BY_PERSONA: Record<PersonaKey, DimKey[]> = {
   ae: ["stage", "forecast", "lob", "portfolio", "account", "orderType"],
   manager: ["rep", "stage", "lob", "portfolio", "orderType", "quarter"],
   executive: ["lob", "portfolio", "industry", "country", "quarter", "orderType", "stage"],
 };
 
-/** Beyond this a <select> is the wrong control and the list is searched instead. */
 const LONG_LIST = 25;
 
-export function FilterBar({
-  meta,
-  persona,
-  active,
-  measure,
+export function FilterSelect({
+  dimension,
+  value,
   onSet,
-  onClear,
-  onMeasure,
+  idPrefix,
 }: {
-  meta: MetaPayload | null;
-  persona: PersonaKey;
-  active: Partial<Record<DimKey, string | null>>;
-  measure: Measure;
+  dimension: MetaDimension;
+  value: string | null | undefined;
   onSet: (dim: DimKey, value: string | null) => void;
-  onClear: () => void;
-  onMeasure: (m: Measure) => void;
+  idPrefix: string;
 }) {
-  if (!meta) return <div className="fbar fbar--skeleton" aria-hidden="true" />;
-
-  const byKey = new Map(meta.dimensions.map((d) => [d.key, d]));
-  const dims = FOR_PERSONA[persona].map((k) => byKey.get(k)).filter(Boolean);
-  const count = Object.values(active).filter(Boolean).length;
+  const generated = useId().replace(/:/g, "");
+  const id = `${idPrefix}-${dimension.key}-${generated}`;
+  const long = dimension.values.length > LONG_LIST;
 
   return (
-    <section className="fbar" aria-label="Filters">
-      {dims.map((d) => {
-        if (!d) return null;
-        const value = active[d.key] ?? "";
-        const long = d.values.length > LONG_LIST;
-        const id = `f-${d.key}`;
-        return (
-          <span className={`fbar__field${value ? " fbar__field--on" : ""}`} key={d.key}>
-            <label className="fbar__label" htmlFor={id}>
-              {d.label}
-            </label>
-            <select
-              id={id}
-              className="fbar__select"
-              value={value}
-              // `countBasis` is on the control itself, because which grain a
-              // dimension counts on is the single most common way to misread
-              // this data and the answer belongs where the choice is made.
-              title={`${d.description} ${d.basisNote}`}
-              onChange={(e) => onSet(d.key, e.target.value || null)}
-            >
-              <option value="">
-                {long ? `All ${d.values.length}` : "All"}
-              </option>
-              {d.values.map((v) => (
-                <option value={v} key={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </span>
-        );
-      })}
+    <span className={`filter-field${value ? " filter-field--on" : ""}`}>
+      <label className="filter-field__label" htmlFor={id}>{dimension.label}</label>
+      <select
+        id={id}
+        className="filter-field__select"
+        value={value ?? ""}
+        title={`${dimension.description} ${dimension.basisNote}`}
+        onChange={(event) => onSet(dimension.key, event.target.value || null)}
+      >
+        <option value="">{long ? `All ${dimension.values.length}` : "All"}</option>
+        {dimension.values.map((option) => (
+          <option value={option} key={option}>{option}</option>
+        ))}
+      </select>
+    </span>
+  );
+}
 
-      <span className="fbar__spacer" />
+export function MeasureToggle({ measure, onMeasure }: {
+  measure: Measure;
+  onMeasure: (measure: Measure) => void;
+}) {
+  return (
+    <span className="measure-control">
+      <span className="measure-control__label">Show</span>
+      <span className="seg" role="group" aria-label="Measure">
+        {(["gp", "revenue"] as Measure[]).map((option) => (
+          <button
+            type="button"
+            key={option}
+            className={`segbtn${measure === option ? " on" : ""}`}
+            aria-pressed={measure === option}
+            onClick={() => onMeasure(option)}
+          >
+            {option === "gp" ? "Profit" : "Revenue"}
+          </button>
+        ))}
+      </span>
+    </span>
+  );
+}
 
-      {count > 0 && (
-        <button type="button" className="fbar__clear" onClick={onClear}>
-          Clear {count}
-        </button>
-      )}
+export function MoreFilters({ dimensions, active, onSet, onClear }: {
+  dimensions: MetaDimension[];
+  active: Partial<Record<DimKey, string | null>>;
+  onSet: (dim: DimKey, value: string | null) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const activeCount = dimensions.filter((dimension) => active[dimension.key]).length;
 
-      {/* Profit is the default and revenue is the alternative view of the same
-          rows, so the switch belongs with the other things that change what you
-          are looking at — not in the header beside who you are. */}
-      <span className="fbar__field">
-        <span className="fbar__label">Show</span>
-        <span className="seg" role="group" aria-label="Measure">
-          {(["gp", "revenue"] as Measure[]).map((m) => (
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  if (dimensions.length === 0) return null;
+
+  return (
+    <div className="more-filters" ref={rootRef}>
+      <button
+        type="button"
+        className={`more-filters__trigger${activeCount ? " more-filters__trigger--on" : ""}`}
+        ref={triggerRef}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        More filters{activeCount ? ` (${activeCount})` : ""}
+      </button>
+      {open ? (
+        <section className="more-filters__popover" role="dialog" aria-label="More page filters">
+          <div className="more-filters__head">
+            <div>
+              <strong>Filter this page</strong>
+              <p>Selections update every summary, action, and chart.</p>
+            </div>
             <button
               type="button"
-              key={m}
-              className={`segbtn${measure === m ? " on" : ""}`}
-              aria-pressed={measure === m}
-              onClick={() => onMeasure(m)}
+              className="more-filters__close"
+              aria-label="Close more filters"
+              onClick={() => { setOpen(false); triggerRef.current?.focus(); }}
             >
-              {m === "gp" ? "Profit" : "Revenue"}
+              ×
             </button>
-          ))}
-        </span>
-      </span>
-    </section>
+          </div>
+          <div className="more-filters__fields">
+            {dimensions.map((dimension) => (
+              <FilterSelect
+                key={dimension.key}
+                dimension={dimension}
+                value={active[dimension.key]}
+                onSet={onSet}
+                idPrefix="more-filter"
+              />
+            ))}
+          </div>
+          {Object.values(active).some(Boolean) ? (
+            <button type="button" className="more-filters__clear" onClick={onClear}>
+              Clear all filters
+            </button>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
   );
 }

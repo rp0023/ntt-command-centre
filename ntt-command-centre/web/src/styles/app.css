@@ -218,77 +218,6 @@ button {
   color: var(--text-2);
 }
 
-/* ---------------------------------------------------------------- filters */
-
-.fbar {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--s-3) var(--s-4);
-  flex-wrap: wrap;
-  padding: var(--s-3) var(--s-5);
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
-}
-
-.fbar--skeleton {
-  height: 56px;
-}
-
-.fbar__field {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.fbar__label {
-  color: var(--muted);
-  font-size: 11.5px;
-}
-
-.fbar__select {
-  min-width: 112px;
-  max-width: 180px;
-  padding: 6px 9px;
-  background: var(--surface2);
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  color: var(--text);
-  font: var(--t-small);
-  transition: border-color var(--dur) var(--ease);
-}
-
-.fbar__select:hover { border-color: var(--line-strong); }
-
-.fbar__field--on .fbar__select {
-  border-color: var(--persona);
-  box-shadow: inset 0 0 0 1px var(--persona);
-  color: var(--text);
-  font-weight: 600;
-}
-
-.fbar__field--on .fbar__label {
-  color: var(--persona);
-  font-weight: 600;
-}
-
-.fbar__spacer {
-  flex: 1;
-}
-
-.fbar__clear {
-  padding: 6px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-pill);
-  color: var(--text-2);
-  font: var(--t-small);
-  font-weight: 600;
-}
-
-.fbar__clear:hover {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
 /* ---------------------------------------------------------------- header */
 
 .hdr {
@@ -434,7 +363,15 @@ button {
 /* ------------------------------------------------------------- page head */
 
 .pv-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-4);
   margin-bottom: var(--s-4);
+}
+
+.pv-head__text {
+  min-width: 0;
 }
 
 .pv-head__question {
@@ -446,6 +383,144 @@ button {
   margin-top: var(--s-2);
   color: var(--muted);
   font: var(--t-small);
+}
+
+.pv-head__controls,
+.card-head__actions,
+.card-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+
+.pv-head__controls,
+.card-head__actions {
+  flex-shrink: 0;
+}
+
+.measure-control {
+  display: grid;
+  gap: 3px;
+}
+
+.measure-control__label,
+.filter-field__label {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.filter-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.filter-field__select {
+  min-width: 112px;
+  max-width: 180px;
+  min-height: 32px;
+  padding: 6px 9px;
+  background: var(--surface2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font: var(--t-small);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.filter-field__select:hover {
+  border-color: var(--line-strong);
+}
+
+.filter-field--on .filter-field__select {
+  border-color: var(--persona);
+  box-shadow: inset 0 0 0 1px var(--persona);
+  font-weight: 600;
+}
+
+.filter-field--on .filter-field__label {
+  color: var(--persona);
+  font-weight: 600;
+}
+
+.more-filters {
+  position: relative;
+}
+
+.more-filters__trigger {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  color: var(--text-2);
+  font: var(--t-small);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.more-filters__trigger:hover,
+.more-filters__trigger--on {
+  border-color: var(--persona);
+  color: var(--persona);
+}
+
+.more-filters__popover {
+  position: absolute;
+  z-index: 35;
+  top: calc(100% + var(--s-2));
+  right: 0;
+  width: min(420px, calc(100vw - 32px));
+  padding: var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-2);
+}
+
+.more-filters__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.more-filters__head strong {
+  font: var(--t-h3);
+}
+
+.more-filters__head p {
+  margin-top: 3px;
+  color: var(--muted);
+  font: var(--t-small);
+}
+
+.more-filters__close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-pill);
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.more-filters__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+
+.more-filters__fields .filter-field__select {
+  width: 100%;
+  max-width: none;
+}
+
+.more-filters__clear {
+  margin-top: var(--s-4);
+  color: var(--muted);
+  font: var(--t-small);
+  text-decoration: underline;
 }
 
 .pv-subhead {
@@ -789,6 +864,27 @@ button.kpi-row__tile:hover {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   min-width: 0;
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.card-head__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.card-filters {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.card-filters .filter-field__select {
+  max-width: 150px;
 }
 
 /* The provenance disclosure. Closed it is one quiet line; open it is the proof. */
@@ -1792,6 +1888,9 @@ button.kpi-row__tile:hover {
 .pv-skel--title { height: 30px; width: 46%; margin-bottom: var(--s-3); }
 .pv-skel--eyebrow { height: 11px; width: 130px; margin-bottom: var(--s-2); }
 .pv-skel--meta { height: 11px; width: 34%; }
+.pv--loading .pv-head__text { flex: 1 1 auto; }
+.pv-skel--head-control { width: 150px; height: 36px; }
+.pv-skel--head-filter { width: 104px; height: 36px; }
 .pv-skel--kpi { height: 92px; }
 .pv-skel--panel { height: 132px; margin-top: var(--s-4); }
 .pv-skel--action { height: 168px; }
@@ -1907,19 +2006,29 @@ button.kpi-row__tile:hover {
   .pv-skel-rail {
     grid-template-columns: 1fr;
   }
-  /* Six stacked selects is most of a phone screen, so the deck scrolls
-     sideways as one row instead of consuming the fold. */
-  .fbar {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding: var(--s-3);
-    scrollbar-width: thin;
+  .pv-head {
+    align-items: stretch;
+    flex-direction: column;
   }
-  .fbar__field {
-    flex-shrink: 0;
+  .pv-head__controls {
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
   }
-  .fbar__spacer {
-    display: none;
+  .more-filters__popover {
+    right: 0;
+  }
+  .more-filters__fields {
+    grid-template-columns: 1fr;
+  }
+  .card-head {
+    flex-direction: column;
+  }
+  .card-head__actions,
+  .card-filters {
+    align-items: flex-end;
+    justify-content: flex-start;
+    width: 100%;
   }
   .pv-head__question {
     font: var(--t-h1);

@@ -457,7 +457,7 @@ def measures(fs: FilterState, principal: Principal) -> dict:
     """
     One computation of everything a page might need, for one slice.
 
-    Assembling this once and handing the same dict to the KPI tiles, the
+    Assembling this once and handing the same dict to the metric banners, the
     narrative and the action engine is what guarantees the headline and the
     prose cannot contradict each other — they are reading the same numbers, not
     recomputing them.

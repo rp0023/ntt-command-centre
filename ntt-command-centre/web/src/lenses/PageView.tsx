@@ -1,11 +1,11 @@
 /**
- * ONE page template, fourteen pages.
+ * ONE page template, fifteen pages.
  *
  * The composition is fixed and deliberate, because a person who learns one page
  * has learned all of them:
  *
- *   the question, stated  →  KPIs  →  the AI panel  →  the action rail  →
- *   the active filters  →  the evidence grid  →  the block that makes this page
+ *   the question and page controls  →  active filters  →  metric banners  →
+ *   the AI panel  →  the action rail  →  the evidence grid  →  the block that makes this page
  *   itself
  *
  * Two rules govern everything below.
@@ -29,6 +29,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type {
   DimKey,
   Lens,
+  MetaPayload,
   ModelCard,
   Tone,
   UseCase,
@@ -39,7 +40,13 @@ import { AiPanel } from "../components/AiPanel";
 import { ChartCard } from "../components/ChartCard";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Findings } from "../components/Findings";
-import { KpiRow } from "../components/KpiRow";
+import { MetricBannerGroup } from "../components/MetricBannerGroup";
+import {
+  FILTER_DIMS_BY_PERSONA,
+  MeasureToggle,
+  MoreFilters,
+  type MetaDimension,
+} from "../components/FilterBar";
 import { days, longDate, money, monthLabel, multiple, num, pct } from "../lib/format";
 import { api } from "../api/client";
 import { useApp } from "../state/AppStateProvider";
@@ -59,15 +66,15 @@ import { useBrief, useView } from "./useView";
  * is that remount, and it means the error state offers a real button rather
  * than an apology.
  */
-export function PageView() {
+export function PageView({ meta }: { meta: MetaPayload | null }) {
   const [attempt, setAttempt] = useState(0);
-  return <PageBody key={attempt} onRetry={() => setAttempt((a) => a + 1)} />;
+  return <PageBody key={attempt} meta={meta} onRetry={() => setAttempt((a) => a + 1)} />;
 }
 
 /** A module-level constant so the brief's cache key does not churn on identity. */
 const NO_CLAIMS: string[] = [];
 
-function PageBody({ onRetry }: { onRetry: () => void }) {
+function PageBody({ meta, onRetry }: { meta: MetaPayload | null; onRetry: () => void }) {
   const { state } = useApp();
   const view = useView();
   // Hooks run unconditionally and in the same order on every render; the brief
@@ -79,7 +86,7 @@ function PageBody({ onRetry }: { onRetry: () => void }) {
     return <PageError page={state.page} detail={view.error} onRetry={onRetry} />;
   }
   if (view.data === null) return <PageSkeleton page={state.page} />;
-  return <Page payload={view.data} brief={brief} />;
+  return <Page payload={view.data} meta={meta} brief={brief} />;
 }
 
 /* ========================================================================== *
@@ -98,14 +105,19 @@ function PageSkeleton({ page }: { page: Lens }) {
         Loading the {page} page.
       </p>
       <div className="pv-head" aria-hidden="true">
-        <div className="pv-skel pv-skel--eyebrow" />
-        <div className="pv-skel pv-skel--title" />
-        <div className="pv-skel pv-skel--meta" />
+        <div className="pv-head__text">
+          <div className="pv-skel pv-skel--title" />
+          <div className="pv-skel pv-skel--meta" />
+        </div>
+        <div className="pv-head__controls">
+          <div className="pv-skel pv-skel--head-control" />
+          <div className="pv-skel pv-skel--head-filter" />
+        </div>
       </div>
-      <div className="pv-skel-kpis" aria-hidden="true">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="pv-skel pv-skel--kpi" />
-        ))}
+      <div className="metric-banners metric-banners--skeleton" aria-hidden="true">
+        <div className="pv-skel metric-banner-skeleton metric-banner-skeleton--primary" />
+        <div className="pv-skel metric-banner-skeleton" />
+        <div className="pv-skel metric-banner-skeleton" />
       </div>
       <div className="pv-skel pv-skel--panel" aria-hidden="true" />
       <div className="pv-skel-rail" aria-hidden="true">
@@ -160,12 +172,34 @@ function PageError({
 
 function Page({
   payload,
+  meta,
   brief,
 }: {
   payload: ViewPayload;
+  meta: MetaPayload | null;
   brief: ReturnType<typeof useBrief>;
 }) {
-  const { clearFilters, onFilter, openDrawer, openAsk, ctx } = useApp();
+  const {
+    state, clearFilters, onFilter, setFilter, setMeasure,
+    openDrawer, openAsk, ctx,
+  } = useApp();
+  const filterPlacement = useMemo(() => {
+    const allowed = new Set(FILTER_DIMS_BY_PERSONA[payload.persona]);
+    const dimensions = new Map<DimKey, MetaDimension>();
+    for (const dimension of meta?.dimensions ?? []) {
+      if (allowed.has(dimension.key)) dimensions.set(dimension.key, dimension);
+    }
+    const owner = new Map<DimKey, string>();
+    for (const chart of payload.charts) {
+      for (const dim of chart.filterDims ?? []) {
+        if (dimensions.has(dim) && !owner.has(dim)) owner.set(dim, chart.id);
+      }
+    }
+    const more = FILTER_DIMS_BY_PERSONA[payload.persona]
+      .filter((dim) => dimensions.has(dim) && !owner.has(dim))
+      .map((dim) => dimensions.get(dim) as MetaDimension);
+    return { dimensions, owner, more };
+  }, [meta, payload.charts, payload.persona]);
 
   return (
     <section className="pv" aria-labelledby="pv-question">
@@ -175,16 +209,33 @@ function Page({
           sidebar, the scope is already in the persona control, and the as-of
           date was on screen twice more; all three are gone from here. */}
       <header className="pv-head">
-        <h1 className="pv-head__question" id="pv-question">
-          {payload.question}
-        </h1>
-        <p className="pv-head__meta">
-          {payload.scope.label} · {payload.quarter} · as of {longDate(payload.asOf)}
-        </p>
+        <div className="pv-head__text">
+          <h1 className="pv-head__question" id="pv-question">
+            {payload.question}
+          </h1>
+          <p className="pv-head__meta">
+            {payload.scope.label} · {payload.quarter} · as of {longDate(payload.asOf)}
+          </p>
+        </div>
+        <div className="pv-head__controls">
+          <MeasureToggle measure={state.measure} onMeasure={setMeasure} />
+          <MoreFilters
+            dimensions={filterPlacement.more}
+            active={state.filters}
+            onSet={setFilter}
+            onClear={clearFilters}
+          />
+        </div>
       </header>
 
-      {/* 2. KPIs. */}
-      {payload.kpis.length > 0 ? <KpiRow kpis={payload.kpis} /> : null}
+      {/* The applied server scope stays visible even when its selector is
+          farther down the page beside the evidence that explains it. */}
+      <FilterBar filters={payload.filters} onToggle={onFilter} onClearAll={clearFilters} />
+
+      {/* 2. Curated summaries over the referenceable KPI contract. */}
+      {payload.metricBanners.length > 0 ? (
+        <MetricBannerGroup banners={payload.metricBanners} kpis={payload.kpis} />
+      ) : null}
 
       {/* 3. The AI, which may say only what no chart here already says. */}
       <AiPanel
@@ -206,14 +257,7 @@ function Page({
         />
       ) : null}
 
-      {/* 5. What is currently narrowing the page, and the way out. */}
-      <FilterBar
-        filters={payload.filters}
-        onToggle={onFilter}
-        onClearAll={clearFilters}
-      />
-
-      {/* 6. The evidence. */}
+      {/* 5. The evidence. */}
       {payload.charts.length > 0 ? (
         <div className="pv-charts">
           {layoutCharts(payload.charts).map(({ spec: c, wide }) => (
@@ -228,6 +272,10 @@ function Page({
                 <ChartCard
                   spec={c}
                   height={c.height ?? undefined}
+                  filterDimensions={(c.filterDims ?? [])
+                    .filter((dim) => filterPlacement.owner.get(dim) === c.id)
+                    .map((dim) => filterPlacement.dimensions.get(dim))
+                    .filter((dimension): dimension is MetaDimension => !!dimension)}
                   ask={{
                     chartsSay: payload.chartsSay,
                     onExpand: (question, seed) => openAsk(question, seed),
@@ -239,7 +287,7 @@ function Page({
         </div>
       ) : null}
 
-      {/* 7. The block that makes this page itself rather than a generic lens. */}
+      {/* 6. The block that makes this page itself rather than a generic lens. */}
       <PageExtras payload={payload} />
     </section>
   );
@@ -256,7 +304,7 @@ function asDim(d: string): DimKey | null {
 }
 
 /**
- * The filter deck, read back off the payload rather than off local state: what
+ * Active filter chips, read back off the payload rather than local state: what
  * is shown is what the server actually applied, which is the only version that
  * can be trusted to match the numbers beside it.
  */

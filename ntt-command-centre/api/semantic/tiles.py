@@ -1,25 +1,25 @@
 """
-KPI tiles, chosen per PAGE rather than per persona.
+Page metrics and curated summaries, chosen per page rather than per persona.
 
 This module exists because of a real defect. The tiles used to be picked by
 persona alone, so all five of a manager's pages showed the same six numbers:
 you clicked "Compare reps", then "Whose forecast can I trust", then "Where we
-lose", and the entire top half of the screen — six tiles and the brief — did not
+lose", and the entire top half of the screen — the metrics and brief — did not
 move. The charts below did change, but they were under the fold, so the product
 looked broken in exactly the way the customer reported: *"the application
 doesn't change values, charts and information on the right as the feature
 changes."*
 
-Every page states one question. Its tiles are now the measures that answer THAT
+Every page states one question. Its metrics are the measures that answer THAT
 question and nothing else — a page about where deals fall out shows conversion
 and cycle time, not cross-sell upside. Where two pages legitimately share a
 measure it is the same arithmetic, not a second definition.
 
 Nothing here computes a number from scratch: every figure comes from
 `measures.measures()`, `predict`, `accounts`, `budget` or `movement_features`,
-which is what keeps the tiles and the charts below them in agreement.
+which is what keeps the banners and the charts below them in agreement.
 
-The Show: Profit / Revenue toggle is honoured here, not merely echoed. A tile
+The Show: Profit / Revenue toggle is honoured here, not merely echoed. A metric
 that is a plain money aggregate — open, won, past due, stalled, at risk, a
 customer's or a line's worth — reads `fs.value_column` and names the measure
 in its sub-line. A tile measured against the plan (attainment, coverage, the
@@ -610,10 +610,144 @@ def _exec(page: str, fs: FilterState, p: Principal, m: dict, c: dict) -> list[di
 
 
 def build(page: str, fs: FilterState, principal: Principal, m: dict) -> list[dict]:
-    """The six tiles that answer THIS page's question."""
+    """The five or six metrics that answer this page's question."""
     c = _ctx(fs, principal)
     if principal.key == "ae":
         return _ae(page, fs, principal, m, c)
     if principal.key == "manager":
         return _manager(page, fs, principal, m, c)
     return _exec(page, fs, principal, m, c)
+
+
+# --------------------------------------------------------------------------- #
+# Curated metric banners
+# --------------------------------------------------------------------------- #
+
+# Each metric is used once. Strings are connective copy; tuples identify a KPI
+# whose server-formatted value becomes an individually referenceable button.
+def _m(key: str) -> tuple[str, str]:
+    return ("metric", key)
+
+
+_BANNER_LAYOUT: dict[str, tuple[dict, dict, dict]] = {
+    "my-day": (
+        {"toneKey": "at_risk", "parts": [_m("needs_call"), " deals need a call · ", _m("at_risk"), " at risk"]},
+        {"toneKey": "past_due", "parts": [_m("calls"), " customer calls · ", _m("past_due"), " past close date"]},
+        {"toneKey": "open", "parts": [_m("open"), " open pipeline · typical silence ", _m("quiet")]},
+    ),
+    "my-deals": (
+        {"toneKey": "past_due", "parts": [_m("past_due"), " past close · ", _m("stalled"), " stalled"]},
+        {"toneKey": "slipped", "parts": [_m("slipped"), " dates pushed · ", _m("shrunk"), " values dropped"]},
+        {"toneKey": "worst", "parts": ["Worst risk score ", _m("worst"), " across ", _m("open"), " still open"]},
+    ),
+    "my-accounts": (
+        {"toneKey": "one_lob", "parts": [_m("customers"), " customers · ", _m("one_lob"), " buy only one line"]},
+        {"toneKey": "biggest", "parts": ["Biggest customer contributes ", _m("biggest")]},
+        {"toneKey": "ideas", "parts": [_m("ideas"), " growth ideas · best opening: ", _m("best_idea")]},
+    ),
+    "my-record": (
+        {"toneKey": "winrate", "trendKey": "winrate", "parts": [_m("winrate"), " win rate · ", _m("won"), " won this year"]},
+        {"toneKey": "closed", "parts": [_m("closed"), " deals closed · average win ", _m("avg")]},
+        {"toneKey": "cycle", "parts": ["Typical close takes ", _m("cycle"), " · losses usually end at ", _m("lost_at")]},
+    ),
+    "pod-pulse": (
+        {"toneKey": "needs_call", "parts": [_m("off"), " reps to coach · ", _m("needs_call"), " deals to chase"]},
+        {"toneKey": "at_risk", "parts": [_m("at_risk"), " at risk inside ", _m("open"), " team pipeline"]},
+        {"toneKey": "stalled", "parts": [_m("stalled"), " stopped moving · ", _m("team_win"), " team win rate"]},
+    ),
+    "rep-benchmark": (
+        {"toneKey": "off", "parts": [_m("off"), " reps outside the pattern · furthest out: ", _m("worst")]},
+        {"toneKey": "spread", "parts": [_m("spread"), " win-rate spread · ", _m("team_win"), " team win rate"]},
+        {"toneKey": "biggest_book", "parts": ["Biggest book: ", _m("biggest_book"), " · ", _m("reps"), " reps in scope"]},
+    ),
+    "process": (
+        {"toneKey": "reached", "parts": [_m("entered"), " deals started · ", _m("reached"), " reached the last stage"]},
+        {"toneKey": "skipped", "parts": [_m("winrate"), " win rate · ", _m("skipped"), " skipped stages"]},
+        {"toneKey": "lost", "parts": ["Typical close takes ", _m("cycle"), " · ", _m("lost"), " deals lost"]},
+    ),
+    "calibration": (
+        {"toneKey": "shrinkers", "parts": [_m("shrinkers"), " reps oversize · ", _m("sandbaggers"), " undersize · ", _m("reversers"), " reverse"]},
+        {"toneKey": "stalled", "parts": [_m("shrunk_deals"), " deals lost value · ", _m("stalled"), " stopped moving"]},
+        {"toneKey": "team_win", "trendKey": "team_win", "parts": ["Team win rate is ", _m("team_win")]},
+    ),
+    "pod-whitespace": (
+        {"toneKey": "upside", "parts": [_m("upside"), " peer GP in missing lines · best opening: ", _m("best")]},
+        {"toneKey": "lift", "parts": ["Four-line customers are worth ", _m("lift"), " more"]},
+        {"toneKey": "ideas", "parts": [_m("ideas"), " assignable ideas · ", _m("plays"), " repeat"]},
+    ),
+    "tldr": (
+        {"toneKey": "cover", "trendKey": "won", "parts": [_m("won"), " won this year · ", _m("cover"), " pipeline cover"]},
+        {"toneKey": "at_risk", "parts": [_m("open"), " open pipeline · ", _m("at_risk"), " at risk"]},
+        {"toneKey": "top_account", "parts": ["Largest customer ", _m("top_account"), " · margin ", _m("margin")]},
+    ),
+    "performance": (
+        {"toneKey": "attain", "trendKey": "won", "parts": [_m("won"), " won · ", _m("attain"), " of plan"]},
+        {"toneKey": "cover", "parts": [_m("cover"), " coverage · ", _m("this_q"), " delivered this quarter"]},
+        {"toneKey": "next_q", "parts": [_m("next_q"), " next-quarter gap · best month ", _m("best")]},
+    ),
+    "structure": (
+        {"toneKey": "margin", "trendKey": "margin", "parts": [_m("revenue"), " revenue at ", _m("margin"), " margin"]},
+        {"toneKey": "top_account", "parts": ["Largest customer ", _m("top_account"), " · top five ", _m("top_five")]},
+        {"toneKey": "top_industry", "parts": ["Largest industry ", _m("top_industry"), " · largest line ", _m("top_lob")]},
+    ),
+    "risks": (
+        {"toneKey": "stake", "parts": [_m("stake"), " involved across ", _m("findings"), " findings · ", _m("critical"), " critical"]},
+        {"toneKey": "at_risk", "parts": [_m("at_risk"), " pipeline at risk · ", _m("reps"), " people flagged"]},
+        {"toneKey": "upside", "parts": [_m("upside"), " upside findings"]},
+    ),
+    "growth": (
+        {"toneKey": "plays", "parts": [_m("plays"), " repeatable plays · biggest reaches ", _m("biggest"), " customers"]},
+        {"toneKey": "ideas", "parts": [_m("ideas"), " growth ideas · ", _m("sure"), " high-confidence"]},
+        {"toneKey": "worth", "parts": [_m("worth"), " peer value · ", _m("owners"), " owners to brief"]},
+    ),
+    "actions": (
+        {"toneKey": "critical", "parts": [_m("decisions"), " decisions · ", _m("critical"), " cannot wait · ", _m("stake"), " involved"]},
+        {"toneKey": "holes", "parts": [_m("holes"), " targets have no pipeline · ", _m("cover"), " coverage"]},
+        {"toneKey": "upside", "parts": [_m("upside"), " chances to sell"]},
+    ),
+}
+
+
+def banners(page: str, metrics: list[dict]) -> list[dict]:
+    """Three deterministic, page-authored summaries over the existing metrics."""
+    layout = _BANNER_LAYOUT.get(page)
+    if layout is None:
+        raise ValueError(f"No metric banner layout for page {page!r}")
+    by_key = {m["key"]: m for m in metrics}
+    seen: list[str] = []
+    out: list[dict] = []
+    for index, spec in enumerate(layout):
+        statement = []
+        keys: list[str] = []
+        for part in spec["parts"]:
+            if isinstance(part, tuple):
+                metric_key = part[1]
+                if metric_key not in by_key:
+                    raise ValueError(f"Banner for {page!r} references unknown metric {metric_key!r}")
+                keys.append(metric_key)
+                seen.append(metric_key)
+                statement.append({"kind": "metric", "metricKey": metric_key})
+            else:
+                statement.append({"kind": "text", "text": part})
+        tone_key = spec["toneKey"]
+        if tone_key not in by_key:
+            raise ValueError(f"Banner for {page!r} references unknown tone metric {tone_key!r}")
+        trend_key = spec.get("trendKey")
+        if trend_key and (trend_key not in by_key or len(by_key[trend_key].get("spark", [])) < 3):
+            trend_key = None
+        sublines = list(dict.fromkeys(by_key[key]["sub"] for key in keys if by_key[key].get("sub")))
+        out.append({
+            "key": f"{page}-{'primary' if index == 0 else f'support-{index}'}",
+            "prominence": "primary" if index == 0 else "supporting",
+            "tone": by_key[tone_key]["tone"],
+            "statement": statement,
+            "subline": " · ".join(sublines),
+            "trendMetricKey": trend_key,
+        })
+    if len(seen) != len(set(seen)):
+        raise ValueError(f"Metric banner layout for {page!r} contains duplicate metrics")
+    if set(seen) != set(by_key):
+        missing = sorted(set(by_key) - set(seen))
+        extra = sorted(set(seen) - set(by_key))
+        raise ValueError(f"Metric banner layout for {page!r} does not cover its metrics: missing={missing}, extra={extra}")
+    return out

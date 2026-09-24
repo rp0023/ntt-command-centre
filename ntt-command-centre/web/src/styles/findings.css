@@ -45,7 +45,7 @@
 
 /* A chip is one category: its name, how many rows here, what is at stake in
    the book. Pressed = the accent wash and the accent's own text tint, the same
-   pair the filter deck uses for an applied filter, so "selected" means one
+   pair the page uses for an applied filter, so "selected" means one
    thing across the page. A chip with no rows in this list is still shown —
    the taxonomy is the server's — but disabled and quiet. */
 .fd-chip {

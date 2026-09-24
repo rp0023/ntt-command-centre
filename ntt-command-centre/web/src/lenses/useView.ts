@@ -28,7 +28,7 @@
  * the page it must not repeat has arrived.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError, type Ctx } from "../api/client";
+import { api, ApiError, sessionGeneration, type Ctx } from "../api/client";
 import type { MetaPayload, Narrative, ViewPayload } from "../api/types";
 import { useApp } from "../state/AppStateProvider";
 
@@ -39,7 +39,7 @@ export interface Async<T> {
 }
 
 function key(ctx: Ctx, extra = ""): string {
-  return JSON.stringify([ctx.persona, ctx.identity, ctx.measure, ctx.filters, extra]);
+  return JSON.stringify([sessionGeneration(), ctx.persona, ctx.identity, ctx.measure, ctx.filters, extra]);
 }
 
 /**

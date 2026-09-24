@@ -289,7 +289,6 @@ def resolve(persona: str | None = None, identity: str | None = None,
 
 def describe(principal: Principal) -> dict:
     """The persona block of /api/meta, including the switcher's contents."""
-    r = roster()
     return {
         "active": {
             "persona": principal.key,
@@ -310,25 +309,9 @@ def describe(principal: Principal) -> dict:
                 "home": p.home, "pages": list(p.pages), "accent": p.accent,
                 "scopeColumn": p.scope_column,
             }
-            for p in PERSONAS.values()
+            for p in (principal.persona,)
         ],
-        "identities": {
-            "ae": [
-                {"id": row.owner, "label": row.owner,
-                 "openDeals": int(row.open_opportunities),
-                 "opportunities": int(row.opportunities), "gp": float(row.gp),
-                 "pod": row.pod_id}
-                for row in r.sort_values("open_opportunities", ascending=False)
-                .itertuples(index=False)
-            ],
-            "manager": [
-                {"id": row.pod_id, "label": f"{row.pod_name} · {row.manager_name}",
-                 "reps": int(row.reps), "openDeals": int(row.open_opportunities),
-                 "gp": float(row.gp)}
-                for row in pods().itertuples(index=False)
-            ],
-            "executive": [{"id": "north-america", "label": "North America", "reps": int(len(r))}],
-        },
+        "identities": {"ae": [], "manager": [], "executive": []},
         "rosterRule": ROSTER_RULE,
     }
 

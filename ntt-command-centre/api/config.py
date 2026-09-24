@@ -95,26 +95,9 @@ ALLOWED_ORIGINS = [
 ]
 
 # --------------------------------------------------------------------------- #
-# The access gate
+# Account authentication
 # --------------------------------------------------------------------------- #
-# One shared password on the whole platform, asked for by the customer for the
-# demo. It is a door, not an identity: it says nothing about WHO is inside, so
-# row-level security still comes from the persona (see api/main.py). Rotate it
-# by setting NTT_ACCESS_PASSWORD on the deployment; the literal below is the
-# password the customer specified and exists so a clean checkout runs.
-ACCESS_PASSWORD = os.environ.get("NTT_ACCESS_PASSWORD", "ntt@2026")
-
-#: The key that signs access tokens. Left empty, api/auth.py derives a stable
-#: one from the password with a hash, so tokens survive a process restart but
-#: every token dies the moment the password is rotated — which is the
-#: behaviour a rotation is for. Set it explicitly to keep tokens valid across
-#: a password change.
+# Accounts and password hashes are loaded from NTT_DEMO_ACCOUNTS_FILE, defaulting
+# to .demo-accounts.json beside this package. The setup command generates a
+# random signing secret there; deployments may override it with this variable.
 ACCESS_SECRET = os.environ.get("NTT_ACCESS_SECRET", "")
-
-#: Two ways to turn the gate off, both for development only. The environment
-#: variable is for a shell or a container; the marker file is for a working
-#: tree where several tools are calling the API at once and none of them
-#: carries a token. The file is checked per request so creating or deleting it
-#: takes effect immediately, and it is gitignored so it cannot ship.
-ACCESS_DISABLED = os.environ.get("NTT_ACCESS_DISABLED", "") in ("1", "true", "True")
-ACCESS_DISABLED_FILE = ROOT / ".access-disabled"

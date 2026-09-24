@@ -2,7 +2,7 @@
 
 Prepared: 23 September 2026  
 Application: `ntt-command-centre/web/`, with its supporting `ntt-command-centre/api/`  
-Basis: current source-code inspection, not a browser walkthrough. This document describes the implemented experience and identifies incomplete paths. It does not describe the separate root `web/` application.
+Basis: source-code inspection, updated after Phase 1 login implementation and browser verification on 23 September 2026. This document describes the implemented experience and identifies incomplete paths. It does not describe the separate root `web/` application.
 
 ## 1. Business purpose
 
@@ -25,7 +25,7 @@ flowchart TD
     A[Opportunity data and movement history] --> C[Calculate measures and behavioral signals]
     B[Data science anomaly, closure and cross-sell outputs] --> C
     C --> D[Apply selected persona scope and filters]
-    D --> E[Show priorities, KPIs and evidence]
+    D --> E[Show priorities, metric summary banners and evidence]
     E --> F{Business question}
     F --> G[Investigate an anomaly]
     F --> H[Assess closure risk]
@@ -50,40 +50,40 @@ Data engineering may compute reusable signals across the book; persona predicate
 
 There are **15 current pages**. Older README text and component comments refer to 14; the current registry includes the executive `growth` page.
 
-The shared password grants entry to the demo. The persona picker selects a role and an identity; it is not a verified employee login. The backend narrows data using that selection. Manager pods are derived from the rep book, not sourced from a manager hierarchy in Salesforce.
+Eleven demo accounts now provide individual email/password login: four Sales reps, six existing managers, and one North America Executive. The server resolves a signed session to the account's assigned role and identity. Users cannot select another persona after login; they sign out and use another account. Manager pods remain derived from the sales roster, rather than sourced from a Salesforce manager hierarchy.
 
-Sales users do not receive entity budget, gap, coverage or entity-concentration measures. Managers do not receive entity budget or gap measures. Executive measure restrictions exclude certain deal-level next-step and silence measures. These are scope rules in the current semantic layer, not proof of production identity authorization.
+See [the implemented login plan](Plans/PLAN.md) for the account roster. Passwords are generated locally and recorded in the gitignored `Plans/DEMO_CREDENTIALS.local.md`; they are not part of this document.
+
+Sales users do not receive entity budget, gap, coverage or entity-concentration measures. Managers do not receive entity budget or gap measures. Executive measure restrictions exclude certain deal-level next-step and silence measures. These scope rules are enforced behind authenticated demo accounts. Enterprise SSO and user administration remain future work.
 
 ## 3. Entry and navigation flow
 
 ```mermaid
 flowchart TD
-    A[Open app or shared URL] --> B{Stored access token unexpired?}
-    B -- No --> C[Enter shared password]
+    A[Open app or shared URL] --> B{Stored session valid?}
+    B -- No --> C[Enter email and password]
     C --> D{Login accepted?}
-    D -- No --> E[Show password or connection error]
+    D -- No --> E[Show credentials or connection error]
     E --> C
-    D -- Yes --> F[Load persona metadata and page]
-    B -- Yes --> F
-    F --> G{API accepts token?}
-    G -- No: 401 --> C
-    G -- Yes --> H[Render persona navigation and page]
-    H --> I[Switch page, filter, investigate or ask]
-    H --> J[Choose another persona or identity]
-    J --> K[Clear filters and close detail drawer]
-    K --> L{Role changed?}
-    L -- Yes --> M[Open new persona home]
-    L -- No --> N[Keep current page with new identity]
-    M --> F
-    N --> F
+    D -- Yes --> F[Load authenticated role and scope]
+    B -- Validate with API --> F
+    F --> G{Requested page belongs to role?}
+    G -- Yes --> H[Restore page and filters]
+    G -- No --> I[Open role home]
+    H --> J[Use role-specific navigation]
+    I --> J
+    J --> K[Profile menu: name, role, scope and sign out]
+    K -- Sign out --> C
 ```
 
-- Without URL selections, the app starts as Executive on Brief, with Profit as the measure.
-- Login preserves the current URL-based view. A 401 clears stored access and returns to the gate.
-- The sidebar contains only pages belonging to the selected persona. The server resolves an invalid or other-persona page request to the selected persona's home payload.
-- Navigation is query-string based rather than a separate pathname for each page.
-- A page change closes the deal drawer and retains the current filters. A persona or identity change clears filters and closes the drawer.
-- Browser history records view changes. Ask transcripts and expanded cards are temporary UI state.
+- The login uses a light NTT design with email, password, reveal control and Sign in. No role selector, signup or password reset is included.
+- Sales starts on Today, Manager on My team, and Executive on Brief. Profit remains the default measure.
+- The API validates the session before the application mounts. Sessions expire after eight hours and use per-tab session storage, with an in-memory fallback when storage is unavailable.
+- The sidebar includes only the authenticated user's pages. The profile menu displays that user's name, role and scope instead of a persona picker.
+- Page navigation remains query-string based. `as` and `id` no longer select a user; permitted page/filter links can be restored after login.
+- A page change closes the deal drawer while retaining filters. Sign-out clears the session, URL selections, mounted app state and outstanding requests.
+- Browser history tracks views. Ask transcripts and expanded cards remain temporary UI state.
+- A 401 or session expiry returns to the gate. Sign-out removes the browser token; it does not revoke copied bearer tokens before expiry. Disabling the account server-side blocks subsequent requests.
 
 ## 4. Page map
 
@@ -123,15 +123,15 @@ Page labels and questions below are taken from the current backend navigation re
 
 The page presents information in this order:
 
-1. **Decision question** — page heading, scope, quarter and business as-of date.
-2. **KPIs** — measures relevant to that page's question.
-3. **Narrative** — a computed explanation initially, with an AI brief requested separately.
-4. **Action cards** — priority, business impact, explanation and suggested next step.
-5. **Active filter chips** — remove an individual selection or clear the view.
-6. **Evidence charts** — inspect the distribution, click supported marks to filter, or ask about the chart.
+1. **Decision question and page controls** — page heading, scope, quarter, business as-of date, Profit/Revenue switch and compact More filters control.
+2. **Active filter chips** — show the server-applied scope immediately; remove an individual selection or clear the view.
+3. **Metric summary banners** — one primary conclusion and two supporting summaries that retain every page-relevant metric as an individually referenceable figure.
+4. **Narrative** — a computed explanation initially, with an AI brief requested separately.
+5. **Action items** — priority, business impact, explanation and suggested next step.
+6. **Evidence charts** — inspect the distribution, use its contextual selectors, click supported marks to filter, or ask about the chart.
 7. **Page-specific detail** — deal list, rep evidence, whitespace, performance detail, findings or executive context where implemented.
 
-The surrounding shell contains the logo, menu toggle, light/dark theme control, persona picker, grouped sidebar, filter deck, floating **Ask AI Expert** button and source-count footer. The current Header does not render the findings bell or header Ask button mentioned in older documentation.
+The surrounding shell contains the logo, menu toggle, light/dark theme control, signed-in profile menu, grouped sidebar, floating **Ask AI Expert** button and source-count footer. Filter options belong to the page sections they affect rather than a shell-level deck. The current Header does not render the findings bell or header Ask button mentioned in older documentation.
 
 ### Filtering and state
 
@@ -141,11 +141,11 @@ The surrounding shell contains the logo, menu toggle, light/dark theme control, 
 | Manager | Rep, stage, LOB, portfolio, order type, quarter |
 | Executive | LOB, portfolio, industry, country, quarter, order type, stage |
 
-Filters are single-value per dimension. Selecting a control sets its value; clicking a supported chart mark toggles that value. Selections trigger server requests so business aggregates are recomputed for the selected scope. Local sorting and filtering of already-returned action cards or findings do not recompute the page's business totals.
+Filters are single-value per dimension. Dimensions represented by a chart appear in that chart's header; dimensions with no natural chart location appear in **More filters** beside the page question. Active selections appear below the heading. Selecting a control sets its value, while clicking a supported chart mark toggles that value. Both trigger server requests so banners, actions, charts and business aggregates are recomputed for one consistent scope. Local sorting and filtering of already-returned action items or findings do not recompute the page's business totals.
 
-Profit is the default measure; Revenue switches the measure for the current slice. URL state includes persona (`as`), identity (`id`), page, measure, filters, Ask-open state and drawer identifier. It does not contain the Ask transcript or question text. Theme uses its own local storage preference and can be initialized from a `theme` URL parameter.
+Profit is the default measure; the Profit/Revenue switch sits beside the page question and changes monetary values for the current slice. URL state includes page, measure, filters, Ask-open state and drawer identifier. Persona and identity come from the authenticated session. It does not contain the Ask transcript or question text. Theme uses its own local storage preference and can be initialized from a `theme` URL parameter.
 
-Example view: `?as=executive&page=growth&lob=Security&measure=revenue`.
+Example view: `?page=growth&lob=Security&measure=revenue (requires an Executive login)`.
 
 ## 6. Persona journeys
 
@@ -155,7 +155,7 @@ These are suggested sequences through existing screens, not mandatory wizards. U
 
 ```mermaid
 flowchart LR
-    A[Select Sales and rep] --> B[Today: review priorities]
+    A[Sign in as a Sales rep] --> B[Today: review priorities]
     B --> C[Expand action and read next step]
     C --> D[My deals: inspect slipping deals]
     D --> E[Open deal drawer]
@@ -173,7 +173,7 @@ The deal drawer contains deal facts, observable risk factors, closure model outp
 
 ```mermaid
 flowchart LR
-    A[Select Manager and pod] --> B[My team: identify priorities]
+    A[Sign in as a pod Manager] --> B[My team: identify priorities]
     B --> C[Compare reps: inspect behavioral differences]
     C --> D[Filter to a rep or relevant segment]
     D --> E[Whose numbers: review forecast evidence]
@@ -207,7 +207,7 @@ Success means a decision supported by scope, value, evidence and caveats. Clicki
 
 ## 7. Investigation and AI interactions
 
-### Action cards and findings
+### Action items and findings
 
 | User action | Implemented response |
 |---|---|
@@ -260,7 +260,7 @@ The AI layer checks numeric tokens against supplied facts and filters redundant 
 
 | Condition | Current experience / recovery |
 |---|---|
-| Wrong password | Gate shows a password error; user can retry |
+| Wrong email or password | Gate shows a credentials error; user can retry |
 | Login server unavailable | Gate shows a connection error |
 | Token expired or API returns 401 | App returns to gate; URL view state remains |
 | Metadata request fails | Shell shows that the semantic layer did not answer and asks for reload |
@@ -271,7 +271,7 @@ The AI layer checks numeric tokens against supplied facts and filters redundant 
 | Deal detail fails | Drawer error with retry |
 | Ask request fails | Failed question remains visible with retry |
 | Model unavailable | Computed answer or an explanation of what cannot be answered |
-| Narrow screen | Sidebar becomes a drawer; small-screen filter deck scrolls horizontally |
+| Narrow screen | Sidebar becomes a drawer; page controls wrap and More filters becomes a single-column popover |
 
 Ask and deal dialogs include Escape handling, focus containment and focus restoration. These behaviors were inspected in source, not validated with assistive technology in this review.
 
@@ -281,13 +281,13 @@ Ask and deal dialogs include Escape handling, focus containment and focus restor
 |---|---|---|
 | Account drawer is not mounted | Account links can change URL state without displaying account detail | `WhitespaceBlock` emits `account:<code>`; `App.tsx` only mounts the drawer for `deal:` |
 | Recommendations have no task lifecycle | User must perform and track follow-up elsewhere; no owner/due-date/status completion loop is shown | ActionRail handlers are scope, drill and explanation; no action-write workflow in the current API |
-| Shared access plus selectable personas | Persona journeys are demo views, not authenticated employee role assignments | Gate, API client and persona resolver |
+| Fixed demo accounts | Authenticated demo roles and scopes; organizational SSO and user administration are not implemented | Gate, API client, auth module and server account registry |
 | Growth extras have no dedicated page block | Growth uses shared cards/charts/narrative; extra backend growth fields do not all become a dedicated details section | `views.extras` supplies growth data; `PageExtras` has no `growth` case |
 | Documentation names obsolete controls/page count | Design discussions should use this current 15-page map and mounted components | Current `PAGES`, `Header` and `App` |
 | Local Ask transcript is not persistent conversation memory | Reopened sessions lose the visible turns; follow-ups are separate scoped questions | AskPanel state and `api.ask` request arguments |
 | Source data is file-backed | Business actions do not immediately change the dashboards through CRM synchronization | API configuration and semantic loader |
 
-These observations are documentation findings; this task does not change their implementation.
+Remaining gaps above are outside the Phase 1 login implementation.
 
 ## 10. Source map
 
@@ -318,5 +318,5 @@ Paths are relative to this document so the evidence can be opened from the repos
 - Three persona journeys mapped to actual navigation and evidence surfaces.
 - Business follow-up distinguished from implemented on-screen interactions.
 - Incomplete account navigation and action tracking explicitly marked.
-- Login, scope changes, filtering, Ask, detail inspection and recovery represented.
+- Login, fixed role scope, logout, filtering, Ask, detail inspection and recovery represented.
 - Source links included for maintaining this document as the application changes.

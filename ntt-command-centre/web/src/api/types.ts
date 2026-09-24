@@ -82,6 +82,20 @@ export interface Kpi {
   spark?: number[];
 }
 
+export type MetricBannerPart =
+  | { kind: "text"; text: string }
+  | { kind: "metric"; metricKey: string };
+
+export interface MetricBanner {
+  key: string;
+  prominence: "primary" | "supporting";
+  tone: Tone;
+  statement: MetricBannerPart[];
+  subline: string;
+  /** Present only when this metric carries a genuine series of three or more points. */
+  trendMetricKey?: string | null;
+}
+
 /** A row-shaped payload, or an object payload for the structured chart types
  *  (heat grid, mekko, sankey, gantt, combo, treemap, bubble). Each module
  *  narrows it to the payload its own CONTRACT entry declares. */
@@ -107,6 +121,8 @@ export interface ChartSpec {
   measureLabel: string;
   format: Format;
   clickDim?: DimKey | null;
+  /** Page-wide selectors placed beside the chart that represents them. */
+  filterDims?: DimKey[];
   countBasis?: CountBasis | null;
   basisNote?: string | null;
   /** Claim keys this chart puts on screen. The AI may not restate them. */
@@ -183,6 +199,7 @@ export interface ViewPayload {
   filters: { dim: string; label: string; value: string }[];
   measure: Measure;
   kpis: Kpi[];
+  metricBanners: MetricBanner[];
   narrative: Narrative;
   actions: ActionCard[];
   charts: ChartSpec[];

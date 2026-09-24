@@ -8,3 +8,5 @@ docs/
 *.log
 data/source/*.xlsx
 .access-disabled
+.demo-accounts.json
+**/myenv

@@ -20,6 +20,7 @@ import "./styles/gate.css";
 import "./styles/icons.css";
 import "./styles/tags.css";
 import "./styles/findings.css";
+import "./styles/metric-banners.css";
 
 // StrictMode stays ON deliberately: it double-invokes every effect, which is
 // exactly the condition the chart repository's render/teardown contract has to
@@ -28,15 +29,11 @@ import "./styles/findings.css";
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider>
-      <AppStateProvider>
-        {/* The gate sits inside both providers on purpose: it needs the theme
-            for the mark, and the URL-borne persona/page state should survive
-            a lock-and-relogin rather than reset to the home page. Below it,
-            nothing mounts until the password has been accepted. */}
-        <Gate>
+      <Gate>
+        <AppStateProvider>
           <App />
-        </Gate>
-      </AppStateProvider>
+        </AppStateProvider>
+      </Gate>
     </ThemeProvider>
   </StrictMode>,
 );

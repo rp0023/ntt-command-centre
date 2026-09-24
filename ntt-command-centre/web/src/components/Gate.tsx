@@ -1,160 +1,90 @@
-/**
- * The password on the door.
- *
- * main.tsx renders this AROUND the app. With no token the gate is shown
- * INSTEAD of the app — not over it — so nothing behind it mounts, nothing
- * fetches, and there is no page underneath to leak a figure through a scrim.
- * When the client sees a 401 anywhere (api/client.ts dispatches
- * `ntt:locked`) the app is unmounted the same way; on the next successful
- * login it mounts afresh and fetches with the new token. That is the whole
- * lifecycle: there is no retry queue, because nothing is ever waiting.
- *
- * What this is not. It is a shared demo password, not identity — it decides
- * whether you are in the demo, and the persona still decides what you see
- * (row-level security is attached at the API boundary, api/main.py). The
- * password rotates through NTT_ACCESS_PASSWORD on the server; the token is
- * bearer-only and lives in localStorage under "ntt.access".
- *
- * The mark follows the same rule as the header: the theme picks a different
- * FILE (the reversed lockup on dark), the symbol is never recoloured.
- */
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
-import { ApiError, LOCKED_EVENT, auth, readAccess } from "../api/client";
-import { useTheme } from "../theme/ThemeProvider";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { ApiError, LOCKED_EVENT, auth, clearAccess, readAccess, type SessionUser } from "../api/client";
+import { SessionContext } from "../state/SessionContext";
 
 export function Gate({ children }: { children: ReactNode }) {
-  // The stored token's expiry is checked here as well as on the server, so
-  // an expired laptop sees the gate immediately rather than a page skeleton
-  // that collapses into it on the first 401.
-  const [open, setOpen] = useState<boolean>(() => readAccess() !== null);
-
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [checking, setChecking] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    const onLocked = () => setOpen(false);
+    const onLocked = () => { setUser(null); setChecking(false); setError(null); };
     window.addEventListener(LOCKED_EVENT, onLocked);
     return () => window.removeEventListener(LOCKED_EVENT, onLocked);
   }, []);
-
-  const enter = useCallback(() => setOpen(true), []);
-
-  if (open) return <>{children}</>;
-  return <GateForm onEnter={enter} />;
+  useEffect(() => {
+    const ac = new AbortController();
+    if (!readAccess()) { clearAccess(); setChecking(false); return; }
+    setChecking(true);
+    setError(null);
+    auth.me(ac.signal).then(u => { if (!ac.signal.aborted) { setUser(u); setChecking(false); } })
+      .catch(e => {
+        if (ac.signal.aborted) return;
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) clearAccess();
+        else setError("We could not reconnect. Check your connection and try again.");
+        setChecking(false);
+      });
+    return () => ac.abort();
+  }, [attempt]);
+  useEffect(() => {
+    if (!user) return;
+    const remaining = Date.parse(readAccess()?.expiresAt ?? "") - Date.now();
+    const timer = window.setTimeout(() => { clearAccess(); setUser(null); }, Math.max(0, remaining));
+    return () => window.clearTimeout(timer);
+  }, [user]);
+  if (user) return <SessionContext.Provider value={user}>{children}</SessionContext.Provider>;
+  return <main className="login-screen">
+    <header className="login-brand"><img src="/ntt-logo.png" alt="NTT DATA" width="110" /><span>Deal Intelligence</span></header>
+    <section className="login-card" aria-labelledby="login-title">
+      <span className="login-eyebrow">NTT DATA &middot; NORTH AMERICA</span>
+      <h1 id="login-title">Sign in to<br />Deal Intelligence.</h1>
+      <p className="login-intro">Your deals. Your team. Your next decision.</p>
+      {checking ? <p role="status" className="login-status">Restoring your session...</p> : error ?
+        <div><p role="alert" className="login-error">{error}</p><button className="login-submit" onClick={() => setAttempt(n => n + 1)}>Try again</button><button className="login-secondary" onClick={() => { clearAccess(); setError(null); }}>Use another account</button></div> :
+        <LoginForm onEnter={setUser} />}
+    </section>
+    <footer className="login-footer">NTT DATA <span>&bull;</span> Sales intelligence, with a clear next step.</footer>
+  </main>;
 }
 
-function GateForm({ onEnter }: { onEnter: () => void }) {
-  const { theme } = useTheme();
+function LoginForm({ onEnter }: { onEnter: (user: SessionUser) => void }) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The shake is a class that animationend removes, so a second wrong guess
-  // can play it again. Typing also clears it: the field stops looking wrong
-  // the moment the user starts fixing it.
-  const [shake, setShake] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const errorId = useId();
-
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
+  const inflight = useRef<AbortController | null>(null);
+  useEffect(() => () => inflight.current?.abort(), []);
+  async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
-    if (!password) {
-      inputRef.current?.focus();
-      return;
-    }
-    setBusy(true);
-    setError(null);
+    setBusy(true); setError(null);
+    const ac = new AbortController(); inflight.current = ac;
     try {
-      await auth.login(password);
-      onEnter();
-    } catch (err) {
-      const wrong = err instanceof ApiError && err.status === 401;
-      setError(wrong ? "That password is not right" : "The server could not be reached");
-      setShake(true);
-      // Keep what was typed, selected, so the next keystroke replaces it and
-      // a near-miss can still be read with Show on.
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      const result = await auth.login(email, password, ac.signal);
+      if (!ac.signal.aborted) onEnter(result.user);
+    } catch (e) {
+      if (ac.signal.aborted) return;
+      setError(e instanceof ApiError && e.status === 401 ? "Email or password is incorrect. Please try again." :
+        e instanceof ApiError && e.status === 503 ? "Sign-in is not configured yet. Contact your demo administrator." :
+        "We could not reach the server. Please try again.");
       setBusy(false);
     }
-  };
-
-  return (
-    <main className="gate">
-      <form
-        className="gate__card"
-        onSubmit={submit}
-        aria-labelledby="gate-title"
-        aria-busy={busy || undefined}
-      >
-        <div className="gate__brand">
-          <img
-            className="gate__logo"
-            src={theme === "dark" ? "/ntt-logo-reversed.png" : "/ntt-logo.png"}
-            alt="NTT DATA"
-            width={92}
-            height={33}
-          />
-          <h1 className="gate__name" id="gate-title">Deal Intelligence</h1>
-        </div>
-
-        <p className="gate__lede">Enter the password to open the platform.</p>
-
-        <label className="gate__label" htmlFor="gate-password">Password</label>
-        <div
-          className={`gate__field${shake ? " gate__field--wrong" : ""}`}
-          onAnimationEnd={() => setShake(false)}
-        >
-          <input
-            ref={inputRef}
-            id="gate-password"
-            className="gate__input"
-            type={reveal ? "text" : "password"}
-            name="password"
-            autoComplete="current-password"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            autoFocus
-            required
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              setShake(false);
-              if (error) setError(null);
-            }}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={error ? errorId : undefined}
-            // readOnly rather than disabled while the server is checking: a
-            // disabled input cannot take focus, and focus has to come back
-            // here when the answer is "wrong".
-            readOnly={busy}
-          />
-          <button
-            type="button"
-            className="gate__reveal"
-            onClick={() => setReveal((v) => !v)}
-            aria-pressed={reveal}
-            aria-label={reveal ? "Hide password" : "Show password"}
-          >
-            {reveal ? "Hide" : "Show"}
-          </button>
-        </div>
-
-        {/* role=alert announces the message when it appears; the slot keeps
-            its height either way so the card does not jump. */}
-        <p className="gate__error" id={errorId} role="alert">
-          {error ?? ""}
-        </p>
-
-        <button type="submit" className="gate__enter" disabled={busy}>
-          {busy ? "Checking…" : "Enter"}
-        </button>
-
-        <p className="gate__note">
-          One password for the demo. Who you are, and what you can see, is
-          still chosen inside.
-        </p>
-      </form>
-    </main>
-  );
+  }
+  return <form onSubmit={submit} className="login-form" aria-busy={busy}>
+    <label htmlFor="login-email">Email address</label>
+    <input id="login-email" name="email" type="email" autoComplete="username" autoCapitalize="none" spellCheck={false} required maxLength={254}
+      placeholder="Enter your email address" value={email} readOnly={busy} aria-invalid={!!error} aria-describedby={error ? "login-error" : undefined}
+      onChange={e => { setEmail(e.target.value); setError(null); }} />
+    <label htmlFor="login-password">Password</label>
+    <div className="login-password">
+      <input id="login-password" name="password" type={reveal ? "text" : "password"} autoComplete="current-password" required maxLength={256}
+        placeholder="Enter your password" value={password} readOnly={busy} aria-invalid={!!error} aria-describedby={error ? "login-error" : undefined}
+        onChange={e => { setPassword(e.target.value); setError(null); }} />
+      <button type="button" onClick={() => setReveal(v => !v)} aria-label={reveal ? "Hide password" : "Show password"} aria-pressed={reveal}>{reveal ? "Hide" : "Show"}</button>
+    </div>
+    <div id="login-error" className="login-error" role="alert">{error}</div>
+    <button type="submit" className="login-submit" disabled={busy}>{busy ? "Signing in..." : "Sign in"}<span aria-hidden="true">&rarr;</span></button>
+    <p className="login-help">Use the account provided for your walkthrough.<br />Your workspace opens based on your assigned role.</p>
+  </form>;
 }

@@ -436,7 +436,7 @@ def opportunities() -> pd.DataFrame:
         "is_past_due", "days_past_due", "fiscal_quarter", "fiscal_month",
         "create_quarter", "fiscal_year",
     ]
-    agg = {c: "first" for c in const}
+    agg: dict[str, str | tuple[str, str]] = {c: "first" for c in const}
     agg.update(
         acv_revenue=("acv_revenue", "sum"),
         acv_gp=("acv_gp", "sum"),
@@ -457,7 +457,11 @@ def opportunities() -> pd.DataFrame:
     # $400k product line.
     def _primary(col: str) -> pd.Series:
         idx = f.groupby(["opportunity_code", col])["acv_revenue"].sum()
-        return idx.groupby(level=0).idxmax().map(lambda t: t[1])
+        # ``idxmax`` can be typed as returning ``NAType`` by pandas stubs;
+        # narrow the result before extracting the second MultiIndex element.
+        return idx.groupby(level=0).idxmax().map(
+            lambda t: t[1] if isinstance(t, tuple) else pd.NA
+        )
 
     out["lob"] = _primary("lob")
     out["portfolio"] = _primary("portfolio")

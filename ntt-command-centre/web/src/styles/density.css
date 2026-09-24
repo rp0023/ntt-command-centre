@@ -155,7 +155,8 @@
   font-size: var(--fs-micro);
 }
 
-.fbar__label,
+.filter-field__label,
+.measure-control__label,
 .ai-panel__foot,
 .ai-panel__prov,
 .dd__code,
@@ -242,14 +243,17 @@
 
 /* ---------------------------------------------------------------- filters */
 
-.fbar__select {
+.filter-field__select {
   min-height: var(--control-h);
-  max-width: var(--select-max);
   padding: var(--s-2) var(--s-3);
   font-size: var(--fs-control);
 }
 
-.fbar__clear,
+.more-filters__trigger,
+.more-filters__close {
+  min-height: var(--tap);
+}
+
 .pv-filters__clear {
   min-height: var(--tap);
   padding: var(--s-2) var(--s-4);

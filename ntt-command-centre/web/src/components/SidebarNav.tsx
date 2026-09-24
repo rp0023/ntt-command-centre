@@ -1,7 +1,7 @@
 /**
  * The persona's own navigation.
  *
- * Grouped rather than a flat tab rail, because fourteen pages across three
+ * Grouped rather than a flat tab rail, because fifteen pages across three
  * profiles is a product, not a dashboard — and the grouping is itself
  * information: an AE's pages are their day, their deals, their accounts and
  * their record, in that order, which is the order they think in.

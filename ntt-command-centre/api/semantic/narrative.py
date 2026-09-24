@@ -43,7 +43,7 @@ def brief(fs: FilterState, principal: Principal, m: dict, page: str = "") -> dic
 
     Structured as: where we stand, what is wrong with it, what it is worth, and
     the one thing to decide. Each sentence states a fact and its consequence —
-    a summary that only restates the KPI tiles above it has taken space and
+    a summary that only restates the metric banners above it has taken space and
     given nothing.
     """
     open_b = m["open"]

@@ -1,9 +1,9 @@
 """
-Page assembly — fourteen pages across three personas, one payload shape.
+Page assembly — fifteen pages across three personas, one payload shape.
 
 Every page answers exactly ONE stated question and is built from the same parts:
-a question, KPI tiles, a narrative, action cards, charts, and the evidence
-behind them. That repetition is what makes fourteen pages tractable; each page
+a question, metric summary banners, a narrative, action items, charts, and the evidence
+behind them. That repetition is what makes fifteen pages tractable; each page
 then adds only the block that answers its own question.
 
 **The personas do not share pages.** An AE's "My Day" and an executive's "TLDR"
@@ -82,16 +82,16 @@ def resolve_page(page: str, principal: Principal) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# KPI tiles
+# Page metrics and their banner summaries
 # --------------------------------------------------------------------------- #
 
 
 def kpis(page: str, fs: FilterState, principal: Principal, m: dict) -> list[dict]:
     """
-    The six tiles that answer THIS page's question.
+    The five or six metrics that answer this page's question.
 
     Delegated to `tiles.py`. These used to be chosen by persona alone, which
-    meant every page of a persona showed the same six numbers and moving down
+    meant every page of a persona showed the same numbers and moving down
     the navigation changed nothing above the fold — the charts changed, but they
     were below it. A page states one question; its tiles answer that question.
     """
@@ -335,6 +335,8 @@ def use_cases(fs: FilterState, principal: Principal) -> list[dict]:
 
 
 def view(page: str, fs: FilterState, principal: Principal) -> dict:
+    from . import tiles
+
     page = resolve_page(page, principal)
     persona, label, question = PAGES[page]
     m = measures(fs, principal)
@@ -342,6 +344,7 @@ def view(page: str, fs: FilterState, principal: Principal) -> dict:
     cards = ACT.build(fs, principal,
                       limit=8 if page in ("my-day", "pod-pulse", "tldr", "actions") else 4,
                       page=page)
+    page_kpis = kpis(page, fs, principal, m)
 
     says: list[str] = []
     for c in ch:
@@ -360,7 +363,8 @@ def view(page: str, fs: FilterState, principal: Principal) -> dict:
         "scope": m["scope"],
         "filters": fs.active(),
         "measure": fs.measure,
-        "kpis": kpis(page, fs, principal, m),
+        "kpis": page_kpis,
+        "metricBanners": tiles.banners(page, page_kpis),
         "narrative": N.brief(fs, principal, m, page),
         "actions": cards,
         "charts": ch,
@@ -374,7 +378,12 @@ def meta(principal: Principal) -> dict:
     """Everything the shell needs once: navigation, dimensions, provenance."""
     from . import personas as PR
 
-    r = report()
+    from .loader import movement
+
+    frame = rls_frame(principal)
+    changes = movement()
+    changes = changes[changes["opportunity_code"].isin(frame["opportunity_code"])]
+    findings = ANOM.scoped(ANOM.for_persona(principal.key), FilterState(), principal)
     return {
         "asOf": AS_OF.isoformat(),
         "fy": fy_label(2026),
@@ -382,7 +391,7 @@ def meta(principal: Principal) -> dict:
         "persona": PR.describe(principal),
         "pages": pages_for(principal.key),
         "allPages": [{"key": k, "persona": v[0], "label": v[1], "question": v[2]}
-                     for k, v in PAGES.items()],
+                     for k, v in PAGES.items() if v[0] == principal.key],
         # Dimension values are listed from the caller's OWN rows. Described
         # off the whole fact table, a manager's rep list said "All 70" for a
         # pod of eleven and an AE's account list offered 357 accounts of which
@@ -391,12 +400,11 @@ def meta(principal: Principal) -> dict:
         "measures": [{"key": "gp", "label": "ACV GP", "default": True},
                      {"key": "revenue", "label": "ACV Revenue", "default": False}],
         "data": {
-            "lines": r.lines, "opportunities": r.opportunities,
-            "accounts": r.accounts, "reps": r.reps,
-            "movementRows": r.movement_rows, "anomalies": r.anomalies,
-            "orphanMovement": r.orphan_movement_opps,
-            "orphanAnomalies": r.orphan_anomaly_opps,
-            "closeBeforeCreate": r.close_before_create,
+            "lines": int(len(frame)), "opportunities": int(frame["opportunity_code"].nunique()),
+            "accounts": int(frame["account_code"].nunique()), "reps": int(frame["owner"].nunique()),
+            "movementRows": int(len(changes)), "anomalies": int(len(findings)),
+            "orphanMovement": 0, "orphanAnomalies": 0,
+            "closeBeforeCreate": int((frame["close_date"] < frame["create_date"]).sum()),
         },
         "provenance": {
             "distribution": distribution_check().to_dict("records"),
