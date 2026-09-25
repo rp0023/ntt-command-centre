@@ -33,5 +33,5 @@ dist/
 
 # Server-only demo hashes/signing secret and local walkthrough passwords.
 .demo-accounts.json
-Context/Plans/DEMO_CREDENTIALS.local.md
+# Context/Plans/DEMO_CREDENTIALS.local.md
 .test-artifacts/
