@@ -24,7 +24,13 @@ export interface NavItem {
 }
 
 /** Which group a page belongs to, per persona. */
-const GROUPS: Record<PersonaKey, { heading: string; pages: Lens[] }[]> = {
+type NavGroup = {
+  heading: string;
+  pages: Lens[];
+  emphasis?: "closure" | "anomaly" | "cross-sell";
+};
+
+const GROUPS: Record<PersonaKey, NavGroup[]> = {
   ae: [
     { heading: "Today", pages: ["my-day"] },
     { heading: "My book", pages: ["my-deals", "my-accounts"] },
@@ -36,7 +42,10 @@ const GROUPS: Record<PersonaKey, { heading: string; pages: Lens[] }[]> = {
     { heading: "The process", pages: ["process", "pod-whitespace"] },
   ],
   executive: [
-    { heading: "Attention", pages: ["tldr", "closure-risk", "anomalies", "opportunities"] },
+    { heading: "Weekly overview", pages: ["tldr"] },
+    { heading: "Deal Closure", pages: ["closure-risk"], emphasis: "closure" },
+    { heading: "Anomaly Detection", pages: ["anomalies"], emphasis: "anomaly" },
+    { heading: "Cross-sell / Upsell", pages: ["opportunities"], emphasis: "cross-sell" },
     { heading: "Decide", pages: ["action-center"] },
   ],
 };
@@ -83,17 +92,17 @@ export function SidebarNav({
   const placed = new Set(GROUPS[persona].flatMap((g) => g.pages));
   const groups = [
     ...GROUPS[persona]
-      .map((g) => ({ heading: g.heading, items: g.pages.map((k) => byKey.get(k)).filter(Boolean) }))
+      .map((g) => ({ heading: g.heading, emphasis: g.emphasis, items: g.pages.map((k) => byKey.get(k)).filter(Boolean) }))
       .filter((g) => g.items.length > 0),
     ...(pages.some((p) => !placed.has(p.key))
-      ? [{ heading: "More", items: pages.filter((p) => !placed.has(p.key)) }]
+      ? [{ heading: "More", emphasis: undefined, items: pages.filter((p) => !placed.has(p.key)) }]
       : []),
-  ] as { heading: string; items: NavItem[] }[];
+  ] as { heading: string; emphasis?: NavGroup["emphasis"]; items: NavItem[] }[];
 
   return (
     <nav className={`side${collapsed ? " side--collapsed" : ""}`} aria-label="Pages">
       {groups.map((g) => (
-        <div className="side__group" key={g.heading}>
+        <div className={`side__group${g.emphasis ? ` side__group--${g.emphasis}` : ""}`} key={g.heading}>
           <p className="side__heading">{g.heading}</p>
           <ul className="side__list">
             {g.items.map((p) => {

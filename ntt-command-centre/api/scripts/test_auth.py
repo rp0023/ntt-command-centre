@@ -14,7 +14,13 @@ from api import auth
 from api.main import app
 from api.scripts.setup_demo_accounts import setup
 from api.semantic import personas as PR
+from api.semantic import predict as P
+from api.semantic import ds_model as DS
+from api.semantic import anomalies as ANOM
+from api.semantic import crosssell as XS
 from api.semantic.loader import facts
+from api.semantic.measures import money
+from api.semantic.measures import FilterState
 
 
 class AuthFlowTests(unittest.TestCase):
@@ -75,28 +81,164 @@ class AuthFlowTests(unittest.TestCase):
         brief_messages = {m["key"]: m for m in payloads["tldr"]["executive"]["messages"]}
         weekly = payloads["tldr"]["executive"]
         self.assertIsNotNone(weekly["weeklyBanner"])
-        self.assertEqual(len(weekly["weeklyBanner"]["supporting"]), 2)
+        self.assertEqual(len(weekly["weeklyBanner"]["supporting"]), 3)
         self.assertTrue(all(b["headline"] and b["subline"]
                             for b in weekly["weeklyBanner"]["supporting"]))
+        supporting = {banner["key"]: banner for banner in weekly["weeklyBanner"]["supporting"]}
+        self.assertIn("ACV Revenue is at risk", weekly["weeklyBanner"]["headline"])
+        self.assertIn("stuck in pipeline", weekly["weeklyBanner"]["subline"])
+        self.assertIn("slippage risk", weekly["weeklyBanner"]["subline"])
+        risk = P.risk_table()
+        hot = risk[risk["risk_band"].isin(("High", "Critical"))]
+        stalled = risk[risk["is_stalled"]]
+        slipped = risk[risk["close_date_slips"] > 0]
+        self.assertIn(money(float(hot["acv_revenue"].sum())),
+                      weekly["weeklyBanner"]["headline"])
+        self.assertIn(money(float(stalled["acv_revenue"].sum())),
+                      weekly["weeklyBanner"]["subline"])
+        self.assertIn(money(float(slipped["acv_revenue"].sum())),
+                      weekly["weeklyBanner"]["subline"])
         self.assertEqual(len(weekly["weeklyInsights"]), 5)
         self.assertEqual([i["rank"] for i in weekly["weeklyInsights"]], [1, 2, 3, 4, 5])
         self.assertEqual([i["key"] for i in weekly["weeklyInsights"]], [
-            "weekly:stuck", "weekly:anomaly", "weekly:slippage",
-            "weekly:commit-probability", "weekly:best-case-probability",
+            "weekly:forecast-probability", "weekly:slippage", "weekly:stuck",
+            "weekly:anomaly", "weekly:cross-sell",
         ])
         action_keys = {a["key"] for a in payloads["action-center"]["executive"]["actions"]}
+        self.assertEqual(
+            {a["key"] for a in weekly["actions"]},
+            {i["actionKey"] for i in weekly["weeklyInsights"]},
+        )
+        self.assertTrue(all(a["description"] and a["nextStep"]
+                            for a in payloads["action-center"]["executive"]["actions"]))
+        self.assertTrue(all({o["status"] for o in a["options"]}
+                            == {"Actioned", "In Review", "Monitoring", "Dismissed"}
+                            for a in payloads["action-center"]["executive"]["actions"]))
         self.assertTrue(all(i["actionKey"] in action_keys for i in weekly["weeklyInsights"]))
+        weekly_actions = {a["key"]: a for a in weekly["actions"]}
+        expected_pages = {
+            "closure": "closure-risk",
+            "anomalies": "anomalies",
+            "opportunities": "opportunities",
+        }
+        for insight in weekly["weeklyInsights"]:
+            self.assertEqual(insight["page"], expected_pages[insight["theme"]])
+            action = weekly_actions[insight["actionKey"]]
+            self.assertEqual(action["theme"], insight["theme"])
+            self.assertTrue(action["description"])
+            self.assertTrue(action["nextStep"])
+            if insight["theme"] == "closure":
+                self.assertEqual(action["headline"], f"Review {insight['entity']}")
+            elif insight["theme"] == "anomalies":
+                self.assertEqual(action["headline"], f"Investigate {insight['entity']}")
+            else:
+                self.assertTrue(action["headline"].startswith("Pilot "))
         for page, key in (("opportunities", "opportunities"), ("anomalies", "anomalies"),
                           ("closure-risk", "closure")):
             detail = {m["key"]: m for m in payloads[page]["executive"]["messages"]}
             self.assertEqual(brief_messages[key], detail[key])
             self.assertIsNone(payloads[page]["executive"]["weeklyBanner"])
             self.assertEqual(payloads[page]["executive"]["weeklyInsights"], [])
+        executive_principal = PR.resolve("executive", "north-america")
+        revenue_fs = FilterState(measure="revenue")
+        # The focused growth overview is a direct count of the scoped cross-sell export.
+        xs_summary = XS.summary(revenue_fs, executive_principal)
+        opportunity_overview = payloads["opportunities"]["executive"]["opportunityOverview"]
+        self.assertEqual(opportunity_overview["recommendations"], xs_summary["recommendations"])
+        self.assertEqual(opportunity_overview["accounts"], xs_summary["accounts"])
+        self.assertEqual(opportunity_overview["strongRecommendations"], xs_summary["strong"])
+        self.assertEqual(opportunity_overview["repeatablePlays"], xs_summary["themes"])
+        self.assertIn(money(xs_summary["peerWonRevenueMedian"]), supporting["opportunities"]["headline"])
+        self.assertNotIn("upside", supporting["opportunities"]["headline"].lower())
+
+        anomaly_rows = payloads["anomalies"]["executive"]["anomalyFindings"]
+        self.assertTrue(anomaly_rows)
+        self.assertTrue(all(row["entityType"] == "Account" for row in anomaly_rows))
+        self.assertTrue(all("agreement" not in row for row in anomaly_rows))
+        account_findings = ANOM.scoped(
+            ANOM.for_persona("executive"), revenue_fs, executive_principal
+        )
+        account_findings = account_findings[
+            (account_findings["entity_type"] == "Account")
+            & (account_findings["framing"] == "risk")
+        ]
+        anomaly_overview = payloads["anomalies"]["executive"]["anomalyOverview"]
+        self.assertEqual(anomaly_overview["accountFindings"], len(account_findings))
+        self.assertEqual(anomaly_overview["accountsAffected"],
+                         account_findings["entity_id"].nunique())
+        self.assertIn(money(anomaly_overview["stalledRevenue"]), supporting["anomalies"]["headline"])
+        self.assertIn(str(anomaly_overview["stalledDeals"]), supporting["anomalies"]["subline"])
+        expected_bands = (("60–90 days", 60, 90), ("91–180 days", 91, 180),
+                          ("181+ days", 181, None))
+        for actual, (label, minimum, maximum) in zip(anomaly_overview["stagnationBands"], expected_bands):
+            expected = stalled[stalled["quiet_days"] >= minimum]
+            if maximum is not None:
+                expected = expected[expected["quiet_days"] <= maximum]
+            self.assertEqual(actual["label"], label)
+            self.assertEqual(actual["deals"], len(expected))
+            self.assertAlmostEqual(actual["revenue"], float(expected["acv_revenue"].sum()))
+        call_summary = {row["call"]: row for row in anomaly_overview["forecastCalls"]}
+        for call in ("Commit", "Best Case", "Pipeline", "Omitted"):
+            expected = stalled[stalled["forecast_category"] == call]
+            self.assertEqual(call_summary[call]["deals"], len(expected))
+            self.assertAlmostEqual(call_summary[call]["revenue"], float(expected["acv_revenue"].sum()))
+        stalled_rows = payloads["anomalies"]["executive"]["stalledDeals"]
+        self.assertLessEqual(len(stalled_rows), 5)
+        self.assertTrue(all(row["silenceDays"] >= 60 for row in stalled_rows))
+        anomaly_actions = {
+            action["key"]: action
+            for action in payloads["anomalies"]["executive"]["actions"]
+        }
+        action_center_keys = {
+            action["key"]
+            for action in payloads["action-center"]["executive"]["actions"]
+        }
+        source_stalls = ANOM.enriched()
+        source_stalls = source_stalls[
+            (source_stalls["entity_type"] == "Opportunity")
+            & (source_stalls["anomaly_type"] == "stalled_pipeline")
+        ].drop_duplicates("entity_id").set_index("entity_id")
+        for row in stalled_rows:
+            self.assertIn(row["key"], source_stalls.index)
+            source = source_stalls.loc[row["key"]]
+            self.assertEqual(row["evidence"], source["evidence"])
+            self.assertEqual(row["nextStep"], source["recommended_action"])
+            self.assertIn(row["actionKey"], anomaly_actions)
+            self.assertIn(row["actionKey"], action_center_keys)
+            action = anomaly_actions[row["actionKey"]]
+            self.assertEqual(action["description"], source["evidence"])
+            self.assertEqual(action["nextStep"], source["recommended_action"])
+            self.assertNotIn("revenueImpact", action)
+            self.assertNotIn("formattedRevenueImpact", action)
         closure_rows = payloads["closure-risk"]["executive"]["closureExceptions"]
         self.assertTrue(closure_rows)
         self.assertTrue(all(row["deterioration"] for row in closure_rows))
         self.assertEqual([row["forecastCategory"] for row in closure_rows[:2]],
                          ["Commit", "Best Case"])
+        closure_actions = payloads["closure-risk"]["executive"]["actions"]
+        self.assertEqual(len(closure_actions), len(closure_rows))
+        self.assertEqual({a["key"] for a in closure_actions},
+                         {f"closure:{row['key']}" for row in closure_rows})
+        closure_overview = payloads["closure-risk"]["executive"]["closureOverview"]
+        predictions = DS.predictions().drop_duplicates("opportunity_code").set_index("opportunity_code")
+        scored_risk = risk.copy()
+        scored_risk["p_win"] = scored_risk["opportunity_code"].map(predictions["p_win"])
+        for series, (forecast, threshold) in zip(
+                closure_overview["series"], (("Commit", .35), ("Best Case", .25))):
+            declared = scored_risk[scored_risk["forecast_category"] == forecast]
+            defensible = declared[declared["p_win"] >= threshold]
+            self.assertEqual(series["forecast"], forecast)
+            self.assertEqual(series["declaredDeals"], len(declared))
+            self.assertEqual(series["defensibleDeals"], len(defensible))
+            self.assertAlmostEqual(series["declaredRevenue"], float(declared["acv_revenue"].sum()))
+            self.assertAlmostEqual(series["defensibleRevenue"], float(defensible["acv_revenue"].sum()))
+        self.assertEqual(closure_overview["stats"], {
+            "openDeals": len(risk),
+            "highRiskDeals": len(hot),
+            "pastDueDeals": int(risk["is_past_due"].sum()),
+            "stalledDeals": int(risk["is_stalled"].sum()),
+            "slippedDeals": int((risk["close_date_slips"] > 0).sum()),
+        })
         self.assertEqual({a["theme"] for a in payloads["tldr"]["executive"]["actions"]},
                          {"opportunities", "anomalies", "closure"})
 
@@ -118,7 +260,20 @@ class AuthFlowTests(unittest.TestCase):
         original = self.registry_path.read_bytes(), self.sheet.read_bytes()
         self.assertEqual(setup(self.registry_path, self.sheet)[0], 0)
         self.assertEqual(original, (self.registry_path.read_bytes(), self.sheet.read_bytes()))
-        self.assertEqual(len(self.tokens), 11)
+        self.assertEqual(len(self.tokens), facts()["owner"].nunique() + 7)
+        self.assertEqual(
+            {a["name"] for a in self.registry["accounts"] if a["role"] == "ae"},
+            set(facts()["owner"].unique()),
+        )
+        self.assertEqual(
+            {a["name"] for a in self.registry["accounts"] if a["role"] == "manager"},
+            {"Dana Whitfield", "Marcus Lindqvist", "Priya Raghavan", "Tomás Oliveira",
+             "Hannah Brecht", "Kenji Nakamura"},
+        )
+        self.assertEqual(
+            [a["identity"] for a in self.registry["accounts"] if a["role"] == "executive"],
+            ["north-america"],
+        )
 
     def test_all_accounts_have_correct_session_and_scope(self):
         for account in self.registry["accounts"]:

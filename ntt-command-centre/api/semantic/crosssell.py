@@ -305,6 +305,7 @@ def summary(fs: FilterState, principal: Principal) -> dict:
     recs = unified(fs, principal, limit=10_000)
     th = themes(fs, principal)
     strong = [r for r in recs if r["confidenceRank"] >= 2]
+    peer_revenues = [r["peerRevenue"] for r in recs if r["peerRevenue"] > 0]
     return {
         "recommendations": len(recs),
         "accounts": len({r["accountCode"] for r in recs}),
@@ -313,6 +314,7 @@ def summary(fs: FilterState, principal: Principal) -> dict:
         "corroborated": sum(1 for r in recs if r["corroborated"]),
         "themes": len(th),
         "estimatedGp": float(sum(r["peerGp"] for r in recs)),
+        "peerWonRevenueMedian": float(pd.Series(peer_revenues).median()) if peer_revenues else None,
         "topTheme": th[0]["offering"] if th else "",
         "topThemeAccounts": th[0]["accounts"] if th else 0,
         "topRecommendation": recs[0] if recs else None,

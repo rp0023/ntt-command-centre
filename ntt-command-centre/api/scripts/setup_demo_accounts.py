@@ -12,7 +12,6 @@ from pathlib import Path
 from ..config import OPPORTUNITIES_CSV, ROOT
 from ..demo_accounts import hash_password, registry_path
 
-SALES = ("Brian Thompson", "Karen Phillips", "Melissa Adams", "Scott Carter")
 MANAGERS = ("Dana Whitfield", "Marcus Lindqvist", "Priya Raghavan", "Tomás Oliveira", "Hannah Brecht", "Kenji Nakamura")
 
 def slug(name: str) -> str:
@@ -27,11 +26,16 @@ def setup(path: Path | None = None, sheet: Path | None = None) -> tuple[int, Pat
     with OPPORTUNITIES_CSV.open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
     definitions = []
-    for name in SALES:
-        emails = {r["OpportunityOwnerEmailAdress"].strip().lower() for r in rows if r["OpportunityOwnerFullName"] == name}
-        email = f"{slug(name)}@global.ntt"
-        if email not in emails:
-            raise ValueError(f"Sales identity not found in source: {name}")
+    owner_emails: dict[str, set[str]] = {}
+    for row in rows:
+        name = row["OpportunityOwnerFullName"].strip()
+        email = row["OpportunityOwnerEmailAdress"].strip().lower()
+        if name and email:
+            owner_emails.setdefault(name, set()).add(email)
+    for name in sorted(owner_emails):
+        emails = owner_emails[name]
+        canonical = f"{slug(name)}@global.ntt"
+        email = canonical if canonical in emails else sorted(emails)[0]
         definitions.append(dict(id=f"sales-{slug(name)}", name=name, email=email,
                                 aliases=sorted(emails - {email}), role="ae", identity=name))
     for i, name in enumerate(MANAGERS):

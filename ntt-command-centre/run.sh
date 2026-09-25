@@ -53,7 +53,7 @@ fi
 echo "▸ semantic layer   http://127.0.0.1:$API_PORT"
 echo "  3,034 opportunity lines · 36,631 logged changes · 485 findings · closure model v2"
 cd "$ROOT/api"
-"$PY" -m uvicorn main:app --host 127.0.0.1 --port "$API_PORT" &
+"$PY" -m uvicorn main:app --host 127.0.0.1 --port "$API_PORT" --reload &
 API_PID=$!
 
 cleanup() {

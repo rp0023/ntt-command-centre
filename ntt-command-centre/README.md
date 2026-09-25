@@ -11,15 +11,14 @@ React + TypeScript + Vite with D3 for every visualisation; FastAPI + pandas for 
 ## Demo login and local startup
 
 The login page uses email and password. Each account has a fixed role and scope:
-four Sales reps (Brian Thompson, Karen Phillips, Melissa Adams, Scott Carter),
-six existing pod managers, and the North America Executive. Switch users by signing out
+all Sales reps in the opportunity data, six derived pod managers, and the North America Executive. Switch users by signing out
 from the profile menu. Existing shared-password sessions no longer work.
 
 PowerShell, from `ntt-command-centre/`, using the existing `api/myenv`:
 
 ```powershell
 .\api\myenv\Scripts\python.exe -m api.scripts.setup_demo_accounts
-.\api\myenv\Scripts\python.exe -m uvicorn api.main:app --host 127.0.0.1 --port 8808
+.\api\myenv\Scripts\python.exe -m uvicorn api.main:app --host 127.0.0.1 --port 8808 --reload
 ```
 
 In a second terminal, from `ntt-command-centre/web/`:
@@ -148,7 +147,7 @@ any aggregation — filtering after would leak the denominator and quietly make 
 |---|---|---|---|
 | **Account Executive** | own deals | My Day · My Deals · My Accounts · My Track Record | Deal timeline reconstruction with silence gaps drawn to scale |
 | **Sales Manager** | a pod of ~11 reps | Pod Pulse · Rep Benchmark · Process · Calibration · Pod Whitespace | Rep behaviour fingerprint against the all-rep percentile distribution |
-| **Executive** | everything | The brief / What closes it? / Process or people? / What's the solution? / What to commit NOW? | A compact numbered journey from weekly pipeline headlines to browser-persistent decisions |
+| **Executive** | everything | The brief / What closes it? / Process or people? / What's the solution? / What to commit NOW? | A compact numbered journey from weekly pipeline headlines to an Action Center with summary counts, expandable evidence, direct decisions, and browser-persistent status |
 
 A persona cannot reach another's page — a deep link redirects to its own home. Actions carry
 role-appropriate verbs: an AE gets *call this account today*, a manager *coach this rep*, an

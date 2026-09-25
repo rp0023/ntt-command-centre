@@ -156,6 +156,41 @@ button {
   opacity: 0.8;
 }
 
+.side__group--closure,
+.side__group--anomaly,
+.side__group--cross-sell {
+  --group-accent: var(--persona);
+}
+
+.side__group--closure { --group-accent: var(--danger); }
+.side__group--anomaly { --group-accent: var(--warn); }
+.side__group--cross-sell { --group-accent: var(--good); }
+
+.side__group--closure .side__heading,
+.side__group--anomaly .side__heading,
+.side__group--cross-sell .side__heading {
+  margin: 0 var(--s-2) var(--s-1);
+  border-left: 3px solid var(--group-accent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--group-accent) 9%, transparent);
+  padding: var(--s-1) var(--s-2);
+  color: var(--text);
+  font-weight: 800;
+  opacity: 1;
+}
+
+.side__group--closure .side__item--on,
+.side__group--anomaly .side__item--on,
+.side__group--cross-sell .side__item--on {
+  border-left-color: var(--group-accent);
+}
+
+.side__group--closure .side__item--on .side__glyph,
+.side__group--anomaly .side__item--on .side__glyph,
+.side__group--cross-sell .side__item--on .side__glyph {
+  color: var(--group-accent);
+}
+
 .side__list {
   display: grid;
   gap: 2px;
