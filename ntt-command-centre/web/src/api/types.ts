@@ -231,8 +231,11 @@ export interface ExecutiveFinding {
 }
 export interface ClosureException {
   key: string; deal: string; account: string; owner: string; stage: string;
+  forecastCategory: string;
   riskBand: RiskBand; riskScore: number; closureProbability: number | null;
   mainDriver: string; closeDate: string | null; silenceDays: number | null;
+  isStalled: boolean; closeDateSlips: number; slipDays: number;
+  deterioration: string;
   revenue: number; formattedRevenue: string;
 }
 export interface ExecutiveActionOption {
@@ -247,11 +250,12 @@ export interface ExecutiveAction {
 export interface ExecutiveWeeklyBanner {
   tone: Tone; headline: string; subline: string;
   stats: { label: string; value: string; tone: Tone }[];
+  supporting: { key: string; tone: Tone; headline: string; subline: string }[];
 }
 export interface ExecutiveWeeklyInsight {
   key: string; rank: number; theme: ExecutiveTheme; title: string;
   conclusion: string; evidence: string[]; nextStep: string;
-  page: Lens; entity: string;
+  page: Lens; entity: string; actionKey?: string;
 }
 export interface ExecutivePayload {
   messages: ExecutiveMessage[];

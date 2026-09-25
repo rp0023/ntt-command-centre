@@ -36,7 +36,7 @@ const GROUPS: Record<PersonaKey, { heading: string; pages: Lens[] }[]> = {
     { heading: "The process", pages: ["process", "pod-whitespace"] },
   ],
   executive: [
-    { heading: "Attention", pages: ["tldr", "opportunities", "anomalies", "closure-risk"] },
+    { heading: "Attention", pages: ["tldr", "closure-risk", "anomalies", "opportunities"] },
     { heading: "Decide", pages: ["action-center"] },
   ],
 };

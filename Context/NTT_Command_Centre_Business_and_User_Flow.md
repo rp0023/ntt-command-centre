@@ -112,11 +112,11 @@ Page labels and questions below are taken from the current backend navigation re
 
 | Sidebar group | Page / key | User question | Main evidence and interaction |
 |---|---|---|---|
-| Attention | Brief / `tldr` | What needs attention? | Restored weekly pipeline banner and five evidence-rich decisions: three on conversion/closure, one expansion signal and one client anomaly |
-| Attention | Opportunities / `opportunities` | Which plays are ready to run? | Up to five ranked plays with customer reach, owners, confidence, pilot account and next step |
-| Attention | Anomalies / `anomalies` | What looks unusual enough to investigate? | Prioritized operational findings with detector agreement, evidence, owner and investigation question |
-| Attention | Closure Risk / `closure-risk` | Which commitments are least likely to close? | Up to ten exceptions with directional probability, observable driver, silence, date and relevant ACV Revenue |
-| Decide | Actions Center / `action-center` | What is owned, due, or waiting? | Domain-tagged actions, local filters and browser-persistent decisions isolated by account |
+| Attention | The brief / `tldr` | Weekly brief | Headlines and five actions for stuck pipeline, deal anomalies, slippage, low-probability Commit and low-probability Best Case deals |
+| Attention | What closes it? / `closure-risk` | Pipeline and conversion | Journey steps 2–6 connect closure probability, owners, model trust, deterioration and Revenue exposure to ten exceptions |
+| Attention | Process or people? / `anomalies` | What is wrong | Prioritized operational findings with detector agreement, evidence, owner and investigation question |
+| Attention | What's the solution? / `opportunities` | Where to grow | Up to five ranked plays with customer reach, owners, confidence, pilot account and next step |
+| Decide | What to commit NOW? / `action-center` | Action Center | Journey steps 9–10 connect decisions to domain-tagged actions and browser-persistent status |
 
 ## 5. Shared page experience
 
@@ -130,7 +130,7 @@ The page presents information in this order:
 6. **Evidence charts** — inspect the distribution, use its contextual selectors, click supported marks to filter, or ask about the chart.
 7. **Page-specific detail** — deal list, rep evidence, whitespace, performance detail, findings or executive context where implemented.
 
-This shared sequence applies to Sales and Manager. Executive pages use the lighter pattern: page heading, active Country/Quarter filters, the canonical domain message, one focused worklist, and relevant action links. Brief restores a single weekly summary banner and ranks five evidence-rich insights, led by pipeline analysis and conversion quality. Actions Center shows the decision list. Executive pages do not render the generic metric-banner group, AI narrative panels, generic charts or the shared action rail. The floating Ask entry remains available.
+This shared sequence applies to Sales and Manager. Executive pages use the lighter pattern: a page title with a visible journey subheading, active Country/Quarter filters, the canonical domain message, one focused worklist, and relevant action links. Brief uses one primary and two supporting weekly headline banners, then ranks five evidence-rich decisions: a stuck deal, a deal anomaly, a slipped close date, a low-probability Commit, and a low-probability Best Case. Every insight links to its evidence and directly to its expanded action. The five tabs carry the numbered journey without creating eleven crowded pages: Brief covers steps 0–1, Closure covers 2–6, Anomalies covers 7, Opportunities covers 8, and Actions Center covers 9–10. Executive pages do not render the generic metric-banner group, AI narrative panels, generic charts or the shared action rail. The floating Ask entry remains available.
 
 The surrounding shell contains the logo, menu toggle, light/dark theme control, signed-in profile menu, grouped sidebar, floating **Ask AI Expert** button and source-count footer. Filter options belong to the page sections they affect rather than a shell-level deck. The current Header does not render the findings bell or header Ask button mentioned in older documentation.
 
@@ -190,14 +190,14 @@ Success means the manager can identify the behavior, affected book and evidence 
 
 ### Executive: carry one signal into a decision
 
+The detailed point-by-point mapping is maintained in [Executive Journey and Use-Case Coverage](Executive_Journey_and_Use_Case_Coverage.md).
+
 ```mermaid
 flowchart LR
-    A[Brief: read three canonical messages] --> B[Opportunities: choose a pilot]
-    A --> C[Anomalies: validate a finding]
-    A --> D[Closure Risk: review a commitment]
-    B --> E[Actions Center]
-    C --> E
-    D --> E
+    A[0–1 The brief: review weekly headlines] --> B[2–6 What closes it?: inspect conversion and owners]
+    B --> C[7 Process or people?: validate what is wrong]
+    C --> D[8 What's the solution?: choose where to grow]
+    D --> E[9–10 Decide and commit in Action Center]
     E --> F[Choose status and record reason when required]
     F -. Saved in this browser .-> G[Resume after reload or sign-in]
 ```

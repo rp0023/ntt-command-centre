@@ -148,7 +148,7 @@ any aggregation — filtering after would leak the denominator and quietly make 
 |---|---|---|---|
 | **Account Executive** | own deals | My Day · My Deals · My Accounts · My Track Record | Deal timeline reconstruction with silence gaps drawn to scale |
 | **Sales Manager** | a pod of ~11 reps | Pod Pulse · Rep Benchmark · Process · Calibration · Pod Whitespace | Rep behaviour fingerprint against the all-rep percentile distribution |
-| **Executive** | everything | Brief / Opportunities / Anomalies / Closure Risk / Actions Center | Three consistent leadership signals and one browser-persistent decision workspace |
+| **Executive** | everything | The brief / What closes it? / Process or people? / What's the solution? / What to commit NOW? | A compact numbered journey from weekly pipeline headlines to browser-persistent decisions |
 
 A persona cannot reach another's page — a deep link redirects to its own home. Actions carry
 role-appropriate verbs: an AE gets *call this account today*, a manager *coach this rep*, an
@@ -167,9 +167,9 @@ right were right, and re-inventing them would have been vanity.
 
 | | |
 |---|---|
-| **Grouped sidebar** | Fourteen pages across three profiles are grouped by decision. Executive navigation is limited to Brief, Opportunities, Anomalies, Closure Risk and Actions Center. Built from `meta.pages`, so a profile cannot see the name of someone else's page. |
+| **Grouped sidebar** | Fourteen pages across three profiles are grouped by decision. Executive navigation follows the five-step tab sequence from The brief through What to commit NOW?. Built from `meta.pages`, so a profile cannot see the name of someone else's page. |
 | **Contextual filters** | A dimension represented by a chart is selected in that chart's header; remaining role-permitted dimensions live in the page's compact **More filters** popover. Active filters stay visible below the question. Every selection refetches and recomputes the whole page on the server, because filtering browser-side would leave percentages with the wrong denominator. |
-| **Metric summary banners** | Sales and Manager pages use one primary and two supporting banners. Executive Brief uses one weekly pipeline banner above five ranked insights; its detail pages have no generic KPI banners or charts. |
+| **Metric summary banners** | Sales and Manager pages use one primary and two supporting banners. Executive Brief also uses that visual hierarchy for three weekly headlines above five ranked insights; its detail pages have no generic KPI banners or charts. |
 | **Findings bell** | Badged with what needs a decision now, not an unread count. There is nothing to mark as read. |
 | **Ask** | In the header and as a floating action, because it must be reachable from every page and the header collapses on narrow screens. |
 

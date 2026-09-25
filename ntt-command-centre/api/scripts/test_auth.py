@@ -53,7 +53,7 @@ class AuthFlowTests(unittest.TestCase):
         headers = self.headers("executive-na")
         meta = self.client.get("/api/meta", headers=headers).json()
         self.assertEqual([p["key"] for p in meta["pages"]],
-                         ["tldr", "opportunities", "anomalies", "closure-risk", "action-center"])
+                         ["tldr", "closure-risk", "anomalies", "opportunities", "action-center"])
         self.assertEqual({d["key"] for d in meta["dimensions"]}, {"country", "quarter"})
         self.assertEqual(meta["measures"], [{"key": "revenue", "label": "ACV Revenue", "default": True}])
 
@@ -75,17 +75,28 @@ class AuthFlowTests(unittest.TestCase):
         brief_messages = {m["key"]: m for m in payloads["tldr"]["executive"]["messages"]}
         weekly = payloads["tldr"]["executive"]
         self.assertIsNotNone(weekly["weeklyBanner"])
+        self.assertEqual(len(weekly["weeklyBanner"]["supporting"]), 2)
+        self.assertTrue(all(b["headline"] and b["subline"]
+                            for b in weekly["weeklyBanner"]["supporting"]))
         self.assertEqual(len(weekly["weeklyInsights"]), 5)
         self.assertEqual([i["rank"] for i in weekly["weeklyInsights"]], [1, 2, 3, 4, 5])
-        self.assertTrue(all(i["theme"] == "closure" for i in weekly["weeklyInsights"][:3]))
-        self.assertEqual({i["theme"] for i in weekly["weeklyInsights"][3:]},
-                         {"opportunities", "anomalies"})
+        self.assertEqual([i["key"] for i in weekly["weeklyInsights"]], [
+            "weekly:stuck", "weekly:anomaly", "weekly:slippage",
+            "weekly:commit-probability", "weekly:best-case-probability",
+        ])
+        action_keys = {a["key"] for a in payloads["action-center"]["executive"]["actions"]}
+        self.assertTrue(all(i["actionKey"] in action_keys for i in weekly["weeklyInsights"]))
         for page, key in (("opportunities", "opportunities"), ("anomalies", "anomalies"),
                           ("closure-risk", "closure")):
             detail = {m["key"]: m for m in payloads[page]["executive"]["messages"]}
             self.assertEqual(brief_messages[key], detail[key])
             self.assertIsNone(payloads[page]["executive"]["weeklyBanner"])
             self.assertEqual(payloads[page]["executive"]["weeklyInsights"], [])
+        closure_rows = payloads["closure-risk"]["executive"]["closureExceptions"]
+        self.assertTrue(closure_rows)
+        self.assertTrue(all(row["deterioration"] for row in closure_rows))
+        self.assertEqual([row["forecastCategory"] for row in closure_rows[:2]],
+                         ["Commit", "Best Case"])
         self.assertEqual({a["theme"] for a in payloads["tldr"]["executive"]["actions"]},
                          {"opportunities", "anomalies", "closure"})
 

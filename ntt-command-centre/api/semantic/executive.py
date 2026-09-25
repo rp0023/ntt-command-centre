@@ -122,9 +122,47 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
     risk = P.risk_table()
     codes = set(slice_frame(fs, principal)["opportunity_code"])
     risk = risk[risk["opportunity_code"].isin(codes)].copy()
-    risk = risk.sort_values(["risk_score", "close_date"], ascending=[False, True])
     hot = risk[risk["risk_band"].isin(("High", "Critical"))]
-    ds = DS.predictions().set_index("opportunity_code") if DS.available() else pd.DataFrame()
+    ds = pd.DataFrame()
+    if DS.available():
+        ds = DS.predictions().drop_duplicates("opportunity_code").set_index("opportunity_code")
+        risk["closure_probability"] = pd.to_numeric(
+            risk["opportunity_code"].map(ds["p_win"]), errors="coerce"
+        )
+        risk["model_driver"] = risk["opportunity_code"].map(ds["driving_force"])
+    else:
+        risk["closure_probability"] = float("nan")
+        risk["model_driver"] = None
+
+    # Curate the exception list around the decisions introduced on the Brief:
+    # low-probability Commit first, then Best Case, followed by a distinct
+    # stalled deal and a distinct slipped deal. Fill the remaining places by
+    # observable risk so the page stays useful when one category is absent.
+    selected_codes: list[str] = []
+
+    def select_one(frame: pd.DataFrame, by: list[str], ascending: list[bool]) -> None:
+        for code in frame.sort_values(by, ascending=ascending)["opportunity_code"].astype(str):
+            if code not in selected_codes:
+                selected_codes.append(code)
+                return
+
+    for forecast in ("Commit", "Best Case"):
+        candidates = risk[risk["forecast_category"] == forecast]
+        low = candidates[candidates["closure_probability"] < .5]
+        select_one(low if len(low) else candidates,
+                   ["closure_probability", "risk_score"], [True, False])
+    select_one(risk[risk["is_stalled"]], ["risk_score", "quiet_days"], [False, False])
+    select_one(risk[risk["close_date_slips"] > 0], ["risk_score", "slip_days"], [False, False])
+    for code in risk.sort_values(["risk_score", "close_date"], ascending=[False, True])[
+        "opportunity_code"
+    ].astype(str):
+        if code not in selected_codes:
+            selected_codes.append(code)
+        if len(selected_codes) == 10:
+            break
+    order = {code: i for i, code in enumerate(selected_codes)}
+    risk["brief_order"] = risk["opportunity_code"].astype(str).map(order)
+    curated = risk[risk["brief_order"].notna()].sort_values("brief_order")
     message = {
         "key": "closure", "title": "Closure Risk",
         "headline": f"{count(len(hot))} commitments need a closure review",
@@ -138,26 +176,37 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
         "page": "closure-risk",
     }
     rows = []
-    for row in risk.head(10).itertuples(index=False):
-        pwin = None
-        ds_driver = None
-        if not ds.empty and row.opportunity_code in ds.index:
-            pred = ds.loc[row.opportunity_code]
-            if isinstance(pred, pd.DataFrame):
-                pred = pred.iloc[0]
-            raw = pred.get("p_win")
-            pwin = float(raw) if raw is not None and not pd.isna(raw) else None
-            driver = pred.get("driving_force")
-            ds_driver = _safe_text(driver) if isinstance(driver, str) else None
+    for row in curated.itertuples(index=False):
+        pwin = (float(row.closure_probability)
+                if not pd.isna(row.closure_probability) else None)
+        ds_driver = _safe_text(row.model_driver) if isinstance(row.model_driver, str) else None
         factors = [f for f in row.risk_factors if f.get("key") != "thin_margin"]
         driver = ds_driver or (factors[0]["detail"] if factors else "No single observable driver dominates.")
+        deterioration = []
+        if int(row.close_date_slips or 0) > 0:
+            deterioration.append(
+                f"close date moved {int(row.close_date_slips)}x ({int(row.slip_days or 0)} days later)"
+            )
+        if bool(row.went_backwards):
+            deterioration.append("stage moved backwards")
+        if bool(row.shrank):
+            deterioration.append(f"deal value fell {abs(float(row.value_drift)):.0%}")
+        if bool(row.is_past_due):
+            deterioration.append(f"{int(row.days_past_due)} days past due")
+        if not deterioration and bool(row.is_stalled):
+            deterioration.append(f"no material movement for {int(row.quiet_days)} days")
         rows.append({
             "key": str(row.opportunity_code), "deal": str(row.opportunity_name),
             "account": str(row.account_name), "owner": str(row.owner), "stage": str(row.stage),
+            "forecastCategory": str(row.forecast_category),
             "riskBand": str(row.risk_band), "riskScore": int(row.risk_score),
             "closureProbability": pwin, "mainDriver": driver,
             "closeDate": row.close_date.date().isoformat() if not pd.isna(row.close_date) else None,
             "silenceDays": int(row.quiet_days) if not pd.isna(row.quiet_days) else None,
+            "isStalled": bool(row.is_stalled),
+            "closeDateSlips": int(row.close_date_slips or 0),
+            "slipDays": int(row.slip_days or 0),
+            "deterioration": "; ".join(deterioration) if deterioration else "No deterioration signal detected",
             "revenue": float(row.acv_revenue), "formattedRevenue": money(float(row.acv_revenue)),
         })
     model = DS.model_card() if DS.available() else DS.unavailable_card()
@@ -219,6 +268,7 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
     hot = risk[risk["risk_band"].isin(("High", "Critical"))]
     past_due = risk[risk["is_past_due"]]
     stalled = risk[risk["is_stalled"]]
+    slipped = risk[risk["close_date_slips"] > 0]
 
     scored = pd.DataFrame()
     if DS.available():
@@ -232,85 +282,106 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
 
     ceiling = float(scored.iloc[0]["p_win"]) if len(scored) else None
     clears_half = int((scored["p_win"] >= .5).sum()) if len(scored) else 0
+    commit_low = scored[(scored["forecast_at_cutoff"] == "Commit") & (scored["p_win"] < .5)]
+    best_case_low = scored[(scored["forecast_at_cutoff"] == "Best Case") & (scored["p_win"] < .5)]
     hot_revenue = float(hot["acv_revenue"].sum()) if len(hot) else 0.0
+    open_revenue = float(risk["acv_revenue"].sum()) if len(risk) else 0.0
     banner = {
         "tone": "danger" if len(hot) else "accent",
-        "headline": (f"{money(hot_revenue)} ACV Revenue across {count(len(hot))} "
-                     "high-risk commitments needs review this week"
-                     if len(hot) else "No high-risk commitment is visible this week"),
-        "subline": (f"Only {count(clears_half)} of {count(len(scored))} model-scored open deals "
-                    f"clear 50% closure probability; {count(len(past_due))} are already past due."
+        "headline": (f"{count(len(commit_low))} Commit and {count(len(best_case_low))} Best Case "
+                     "deals sit below 50% closure probability"
+                     if len(scored) else "Closure probability is unavailable for this week's commitments"),
+        "subline": ("Review Commit first, then Best Case. Require customer and stage evidence before "
+                    f"keeping the category; only {count(clears_half)} of {count(len(scored))} open deals clear 50%."
                     if len(scored) else
                     f"{count(len(past_due))} open deals are past due and {count(len(stalled))} are stalled."),
         "stats": [
-            {"label": "High / critical", "value": count(len(hot)), "tone": "danger"},
-            {"label": "Model ceiling", "value": f"{ceiling:.0%}" if ceiling is not None else "—",
-             "tone": "warn"},
-            {"label": "Past due", "value": count(len(past_due)), "tone": "warn"},
+            {"label": "Stuck", "value": count(len(stalled)), "tone": "danger"},
+            {"label": "Slipped", "value": count(len(slipped)), "tone": "warn"},
+            {"label": "Deal anomalies", "value": count(len(findings)), "tone": "warn"},
+        ],
+        "supporting": [
+            {
+                "key": "pipeline-health", "tone": "danger",
+                "headline": f"{count(len(stalled))} deals are stuck in the pipeline",
+                "subline": (f"They represent {money(float(stalled['acv_revenue'].sum()))} ACV Revenue; "
+                            "owners must record a customer event, reset the date, or close the deal."),
+            },
+            {
+                "key": "conversion-quality", "tone": "warn",
+                "headline": f"{count(len(slipped))} deals carry close-date slippage risk",
+                "subline": (f"Close dates moved {int(slipped['close_date_slips'].sum()) if len(slipped) else 0:,} times; "
+                            "the current date needs customer-backed evidence."),
+            },
         ],
     }
 
     insights: list[dict] = []
-    if len(scored):
-        top = scored.iloc[0]
-        code = str(top["opportunity_code"])
-        rr = risk[risk["opportunity_code"] == code]
-        revenue = float(rr.iloc[0]["acv_revenue"]) if len(rr) else float(top.get("revenue_at_cutoff") or 0)
-        deal = str(top.get("opportunity_name") or (rr.iloc[0]["opportunity_name"] if len(rr) else code))
-        stage = str(top.get("stage_at_cutoff") or (rr.iloc[0]["stage"] if len(rr) else "Unknown"))
-        insights.append({
-            "key": "weekly:conversion-ceiling", "rank": 1, "theme": "closure",
-            "title": "Conversion confidence has a low ceiling",
-            "conclusion": (f"The strongest open model signal is only {float(top['p_win']):.0%}; "
-                           f"just {count(clears_half)} deals clear 50%."),
-            "evidence": [f"{deal} is the highest-ranked open commitment.",
-                         f"It is at {stage} with {money(revenue)} ACV Revenue."],
-            "nextStep": "Treat probability as directional and require stage evidence before strengthening the forecast.",
-            "page": "closure-risk", "entity": deal,
-        })
-    if closures:
-        deal = closures[0]
-        insights.append({
-            "key": "weekly:deal-rescue", "rank": 2, "theme": "closure",
-            "title": "The highest-risk commitment needs a rescue decision",
-            "conclusion": f"{deal['deal']} scores {deal['riskScore']} ({deal['riskBand']}) for closure risk.",
-            "evidence": [deal["mainDriver"],
-                         f"{deal['formattedRevenue']} ACV Revenue; {deal['silenceDays'] or 0} days since movement."],
-            "nextStep": f"Ask {deal['owner']} for evidence supporting the close date before the next review.",
-            "page": "closure-risk", "entity": deal["deal"],
-        })
-    insights.append({
-        "key": "weekly:pipeline-hygiene", "rank": 3, "theme": "closure",
-        "title": "Pipeline hygiene is suppressing conversion quality",
-        "conclusion": f"{count(len(past_due))} open deals are past due and {count(len(stalled))} have stopped moving.",
-        "evidence": [f"{count(len(hot))} commitments now sit in High or Critical risk.",
-                     "Silence and expired close dates are observable signals, independent of the weak model."],
-        "nextStep": "Require owners to validate, re-date, or close the oldest exceptions this week.",
-        "page": "closure-risk", "entity": "Open pipeline",
-    })
 
-    recommendations = XS.unified(fs, principal, limit=10_000)
-    if recommendations:
-        rec = recommendations[0]
-        reason = rec["reasons"][0]["text"] if rec.get("reasons") else "Peer evidence supports the fit."
+    def closure_insight(deal: dict | None, key: str, rank: int, title: str,
+                        conclusion: str, next_step: str) -> None:
+        if not deal:
+            return
         insights.append({
-            "key": "weekly:expansion", "rank": 4, "theme": "opportunities",
-            "title": "One expansion signal is ready for customer validation",
-            "conclusion": f"{rec['accountName']} is a {rec['confidence']} confidence fit for {rec['offering']}.",
-            "evidence": [f"{rec['methodCount']} independent method{'s' if rec['methodCount'] != 1 else ''} support the recommendation.",
-                         reason],
-            "nextStep": f"Ask {rec['owner']} to test the need with {rec['accountName']} this week.",
-            "page": "opportunities", "entity": rec["accountName"],
+            "key": key, "rank": rank, "theme": "closure", "title": title,
+            "conclusion": conclusion,
+            "evidence": [deal["deterioration"],
+                         f"{deal['owner']} owns {deal['formattedRevenue']} ACV Revenue in {deal['forecastCategory']}."],
+            "nextStep": next_step, "page": "closure-risk", "entity": deal["deal"],
+            "actionKey": f"closure:{deal['key']}",
         })
+
+    stalled_deal = next((d for d in closures if d["isStalled"]), None)
+    slipped_deal = next((d for d in closures if d["closeDateSlips"] > 0), None)
+    commit_deal = next((d for d in closures if d["forecastCategory"] == "Commit"), None)
+    best_case_deal = next((d for d in closures if d["forecastCategory"] == "Best Case"), None)
+    closure_insight(
+        stalled_deal, "weekly:stuck", 1, "A stuck deal needs an owner decision",
+        (f"{stalled_deal['deal']} has been silent for {stalled_deal['silenceDays'] or 0} days."
+         if stalled_deal else ""),
+        (f"Ask {stalled_deal['owner']} to log the next customer event within 48 hours, "
+         "or reset the close date." if stalled_deal else ""),
+    )
     if findings:
         finding = findings[0]
         insights.append({
-            "key": "weekly:anomaly", "rank": 5, "theme": "anomalies",
-            "title": "The strongest client anomaly needs validation",
+            "key": "weekly:anomaly", "rank": 2, "theme": "anomalies",
+            "title": "A deal anomaly needs investigation",
             "conclusion": f"{finding['entity']} carries a {finding['severity'].lower()}-priority {finding['category'].lower()} finding.",
             "evidence": [finding["evidence"], f"Detector view: {finding['agreement']}."],
             "nextStep": finding["nextStep"], "page": "anomalies", "entity": finding["entity"],
+            "actionKey": f"anomaly:{finding['key']}",
         })
+    closure_insight(
+        slipped_deal, "weekly:slippage", 3, "Close-date slippage needs correction",
+        (f"{slipped_deal['deal']} moved its close date {slipped_deal['closeDateSlips']} times, "
+         f"{slipped_deal['slipDays']} days later in total." if slipped_deal else ""),
+        (f"Ask {slipped_deal['owner']} to confirm the current date with customer evidence this week; "
+         "otherwise re-date the deal." if slipped_deal else ""),
+    )
+    closure_insight(
+        commit_deal, "weekly:commit-probability", 4, "A low-probability Commit needs evidence first",
+        (f"{commit_deal['deal']} is marked Commit at "
+         f"{commit_deal['closureProbability']:.0%} closure probability."
+         if commit_deal and commit_deal["closureProbability"] is not None else
+         f"{commit_deal['deal']} is marked Commit without a usable probability." if commit_deal else ""),
+        (f"Ask {commit_deal['owner']} for the buying event, decision date, and next meeting; "
+         "move it out of Commit if that evidence is absent." if commit_deal else ""),
+    )
+    closure_insight(
+        best_case_deal, "weekly:best-case-probability", 5,
+        "A low-probability Best Case needs qualification",
+        (f"{best_case_deal['deal']} is marked Best Case at "
+         f"{best_case_deal['closureProbability']:.0%} closure probability."
+         if best_case_deal and best_case_deal["closureProbability"] is not None else
+         f"{best_case_deal['deal']} is marked Best Case without a usable probability."
+         if best_case_deal else ""),
+        (f"Ask {best_case_deal['owner']} to validate the next customer step and close-date basis; "
+         "downgrade it if neither is confirmed." if best_case_deal else ""),
+    )
+    insights = sorted(insights, key=lambda item: item["rank"])
+    for rank, insight in enumerate(insights[:5], start=1):
+        insight["rank"] = rank
     return banner, insights[:5]
 
 
