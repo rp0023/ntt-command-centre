@@ -46,15 +46,15 @@ Data engineering may compute reusable signals across the book; persona predicate
 |---|---|---|---|---|
 | Sales (`ae`) | Selected account executive's owned opportunities | Which deals should I call today, and what should I say? | Today | 4 |
 | Manager (`manager`) | Selected pod's reps | Which patterns need coaching or intervention? | My team | 5 |
-| Executive (`executive`) | North America book | Where should money and attention move this quarter? | Brief | 6 |
+| Executive (`executive`) | North America book | Which opportunity, anomaly or closure signal needs attention? | Brief | 5 |
 
-There are **15 current pages**. Older README text and component comments refer to 14; the current registry includes the executive `growth` page.
+There are **14 current pages**: four Sales, five Manager and five Executive pages.
 
 Eleven demo accounts now provide individual email/password login: four Sales reps, six existing managers, and one North America Executive. The server resolves a signed session to the account's assigned role and identity. Users cannot select another persona after login; they sign out and use another account. Manager pods remain derived from the sales roster, rather than sourced from a Salesforce manager hierarchy.
 
 See [the implemented login plan](Plans/PLAN.md) for the account roster. Passwords are generated locally and recorded in the gitignored `Plans/DEMO_CREDENTIALS.local.md`; they are not part of this document.
 
-Sales users do not receive entity budget, gap, coverage or entity-concentration measures. Managers do not receive entity budget or gap measures. Executive measure restrictions exclude certain deal-level next-step and silence measures. These scope rules are enforced behind authenticated demo accounts. Enterprise SSO and user administration remain future work.
+Sales users do not receive entity budget, gap, coverage or entity-concentration measures. Managers do not receive entity budget or gap measures. The Executive experience is fixed to Revenue and excludes profit, margin, budget, coverage and plan-gap data from its views, detail payloads and Ask answers. These scope rules are enforced behind authenticated demo accounts. Enterprise SSO and user administration remain future work.
 
 ## 3. Entry and navigation flow
 
@@ -77,7 +77,7 @@ flowchart TD
 ```
 
 - The login uses a light NTT design with email, password, reveal control and Sign in. No role selector, signup or password reset is included.
-- Sales starts on Today, Manager on My team, and Executive on Brief. Profit remains the default measure.
+- Sales starts on Today, Manager on My team, and Executive on Brief. Profit remains the default for Sales and Manager; Executive is fixed to Revenue and has no measure switch.
 - The API validates the session before the application mounts. Sessions expire after eight hours and use per-tab session storage, with an in-memory fallback when storage is unavailable.
 - The sidebar includes only the authenticated user's pages. The profile menu displays that user's name, role and scope instead of a persona picker.
 - Page navigation remains query-string based. `as` and `id` no longer select a user; permitted page/filter links can be restored after login.
@@ -112,12 +112,11 @@ Page labels and questions below are taken from the current backend navigation re
 
 | Sidebar group | Page / key | User question | Main evidence and interaction |
 |---|---|---|---|
-| The read | Brief / `tldr` | What do I need to know? | Profit bridge, risk bands, model context and links into the three use cases |
-| The numbers | Against plan / `performance` | Are we on track? | Monthly plan comparison, coverage, wins and quarter detail |
-| The numbers | The business / `structure` | Where does the money sit? | Margin mix, account concentration and industry flow |
-| The decisions | What is wrong / `risks` | What needs fixing, and what is it worth? | Anomaly categories, ageing, stage behavior and expandable findings |
-| The decisions | Where to grow / `growth` | Which growth ideas repeat often enough to run as a play? | Cross-sell themes and growth matrix, plus common page cards and narrative |
-| The decisions | Decisions / `actions` | What needs deciding now? | Ranked recommendations and coverage by LOB and portfolio |
+| Attention | Brief / `tldr` | What needs attention? | Restored weekly pipeline banner and five evidence-rich decisions: three on conversion/closure, one expansion signal and one client anomaly |
+| Attention | Opportunities / `opportunities` | Which plays are ready to run? | Up to five ranked plays with customer reach, owners, confidence, pilot account and next step |
+| Attention | Anomalies / `anomalies` | What looks unusual enough to investigate? | Prioritized operational findings with detector agreement, evidence, owner and investigation question |
+| Attention | Closure Risk / `closure-risk` | Which commitments are least likely to close? | Up to ten exceptions with directional probability, observable driver, silence, date and relevant ACV Revenue |
+| Decide | Actions Center / `action-center` | What is owned, due, or waiting? | Domain-tagged actions, local filters and browser-persistent decisions isolated by account |
 
 ## 5. Shared page experience
 
@@ -131,6 +130,8 @@ The page presents information in this order:
 6. **Evidence charts** — inspect the distribution, use its contextual selectors, click supported marks to filter, or ask about the chart.
 7. **Page-specific detail** — deal list, rep evidence, whitespace, performance detail, findings or executive context where implemented.
 
+This shared sequence applies to Sales and Manager. Executive pages use the lighter pattern: page heading, active Country/Quarter filters, the canonical domain message, one focused worklist, and relevant action links. Brief restores a single weekly summary banner and ranks five evidence-rich insights, led by pipeline analysis and conversion quality. Actions Center shows the decision list. Executive pages do not render the generic metric-banner group, AI narrative panels, generic charts or the shared action rail. The floating Ask entry remains available.
+
 The surrounding shell contains the logo, menu toggle, light/dark theme control, signed-in profile menu, grouped sidebar, floating **Ask AI Expert** button and source-count footer. Filter options belong to the page sections they affect rather than a shell-level deck. The current Header does not render the findings bell or header Ask button mentioned in older documentation.
 
 ### Filtering and state
@@ -139,13 +140,13 @@ The surrounding shell contains the logo, menu toggle, light/dark theme control, 
 |---|---|
 | Sales | Stage, forecast, LOB, portfolio, account, order type |
 | Manager | Rep, stage, LOB, portfolio, order type, quarter |
-| Executive | LOB, portfolio, industry, country, quarter, order type, stage |
+| Executive | Country and quarter |
 
 Filters are single-value per dimension. Dimensions represented by a chart appear in that chart's header; dimensions with no natural chart location appear in **More filters** beside the page question. Active selections appear below the heading. Selecting a control sets its value, while clicking a supported chart mark toggles that value. Both trigger server requests so banners, actions, charts and business aggregates are recomputed for one consistent scope. Local sorting and filtering of already-returned action items or findings do not recompute the page's business totals.
 
-Profit is the default measure; the Profit/Revenue switch sits beside the page question and changes monetary values for the current slice. URL state includes page, measure, filters, Ask-open state and drawer identifier. Persona and identity come from the authenticated session. It does not contain the Ask transcript or question text. Theme uses its own local storage preference and can be initialized from a `theme` URL parameter.
+Profit is the default measure for Sales and Manager; their Profit/Revenue switch sits beside the page question. Executive is fixed to Revenue and displays it only where it helps prioritize a closure decision. URL state includes page, measure, filters, Ask-open state, drawer identifier and an optional expanded Actions Center key. Persona and identity come from the authenticated session. Theme uses its own local storage preference.
 
-Example view: `?page=growth&lob=Security&measure=revenue (requires an Executive login)`.
+Example Executive view: `?page=closure-risk&country=Canada&quarter=FY26-Q2`. Legacy Executive links redirect to the matching focused page.
 
 ## 6. Persona journeys
 
@@ -187,23 +188,21 @@ flowchart LR
 
 Success means the manager can identify the behavior, affected book and evidence behind a coaching discussion. The app does not record coaching completion or assign the opportunity.
 
-### Executive: investigate exposure and select a decision
+### Executive: carry one signal into a decision
 
 ```mermaid
 flowchart LR
-    A[Executive Brief] --> B[Against plan: inspect attainment and coverage]
-    A --> C[The business: inspect mix and concentration]
-    A --> D[What is wrong: investigate findings]
-    A --> E[Where to grow: inspect repeatable growth themes]
-    B --> F[Decisions: review recommendations]
-    C --> F
-    D --> F
-    E --> F
-    F --> G[Scope evidence or ask for explanation]
-    G -. Outside app .-> H[Agree intervention, resource shift or growth play]
+    A[Brief: read three canonical messages] --> B[Opportunities: choose a pilot]
+    A --> C[Anomalies: validate a finding]
+    A --> D[Closure Risk: review a commitment]
+    B --> E[Actions Center]
+    C --> E
+    D --> E
+    E --> F[Choose status and record reason when required]
+    F -. Saved in this browser .-> G[Resume after reload or sign-in]
 ```
 
-Success means a decision supported by scope, value, evidence and caveats. Clicking a decision card does not execute a resource reallocation or create an approval record.
+Success means the message seen on Brief remains unchanged on its detail page and leads to an owned action. Actions Center decisions persist in the browser under the authenticated identity; they do not imply CRM write-back and never appear for another account.
 
 ## 7. Investigation and AI interactions
 
@@ -280,10 +279,9 @@ Ask and deal dialogs include Escape handling, focus containment and focus restor
 | Observation | Effect on the business/user flow | Source evidence |
 |---|---|---|
 | Account drawer is not mounted | Account links can change URL state without displaying account detail | `WhitespaceBlock` emits `account:<code>`; `App.tsx` only mounts the drawer for `deal:` |
-| Recommendations have no task lifecycle | User must perform and track follow-up elsewhere; no owner/due-date/status completion loop is shown | ActionRail handlers are scope, drill and explanation; no action-write workflow in the current API |
+| Sales and Manager recommendations have no task lifecycle | Their follow-up remains outside the app; Executive Actions Center decisions persist only in the current browser | `ActionRail` and `ExecutivePage` |
 | Fixed demo accounts | Authenticated demo roles and scopes; organizational SSO and user administration are not implemented | Gate, API client, auth module and server account registry |
-| Growth extras have no dedicated page block | Growth uses shared cards/charts/narrative; extra backend growth fields do not all become a dedicated details section | `views.extras` supplies growth data; `PageExtras` has no `growth` case |
-| Documentation names obsolete controls/page count | Design discussions should use this current 15-page map and mounted components | Current `PAGES`, `Header` and `App` |
+| Executive decisions are browser-local | Status and reason survive reload and logout on this browser, but are not CRM records | `ExecutivePage` local storage namespace |
 | Local Ask transcript is not persistent conversation memory | Reopened sessions lose the visible turns; follow-ups are separate scoped questions | AskPanel state and `api.ask` request arguments |
 | Source data is file-backed | Business actions do not immediately change the dashboards through CRM synchronization | API configuration and semantic loader |
 
@@ -303,6 +301,7 @@ Paths are relative to this document so the evidence can be opened from the repos
 | Navigation grouping | [SidebarNav.tsx](../ntt-command-centre/web/src/components/SidebarNav.tsx) |
 | Persona and theme controls | [Header.tsx](../ntt-command-centre/web/src/components/Header.tsx) |
 | Shared page composition and detail blocks | [PageView.tsx](../ntt-command-centre/web/src/lenses/PageView.tsx) |
+| Focused Executive experience and Actions Center | [ExecutivePage.tsx](../ntt-command-centre/web/src/lenses/ExecutivePage.tsx) |
 | Filter controls | [FilterBar.tsx](../ntt-command-centre/web/src/components/FilterBar.tsx) |
 | URL state and transitions | [filters.ts](../ntt-command-centre/web/src/state/filters.ts), [AppStateProvider.tsx](../ntt-command-centre/web/src/state/AppStateProvider.tsx) |
 | Action interactions | [ActionRail.tsx](../ntt-command-centre/web/src/components/ActionRail.tsx) |
@@ -314,9 +313,9 @@ Paths are relative to this document so the evidence can be opened from the repos
 
 ### Review checklist
 
-- All 15 current page keys and labels included.
+- All 14 current page keys and labels included.
 - Three persona journeys mapped to actual navigation and evidence surfaces.
 - Business follow-up distinguished from implemented on-screen interactions.
-- Incomplete account navigation and action tracking explicitly marked.
+- Incomplete account navigation and browser-local Executive action tracking explicitly marked.
 - Login, fixed role scope, logout, filtering, Ask, detail inspection and recovery represented.
 - Source links included for maintaining this document as the application changes.

@@ -13,20 +13,36 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PY="${NTT_PYTHON:-/Users/vineet/Desktop/NTT/.venv/bin/python}"
+
+# Prefer an explicit interpreter, then discover the environment stored with
+# this project. The old default pointed at one developer's Mac checkout.
+if [[ -n "${NTT_PYTHON:-}" ]]; then
+  PY="$NTT_PYTHON"
+elif [[ -x "$ROOT/api/myenv/Scripts/python.exe" ]]; then
+  PY="$ROOT/api/myenv/Scripts/python.exe"
+elif [[ -x "$ROOT/api/myenv/bin/python" ]]; then
+  PY="$ROOT/api/myenv/bin/python"
+elif [[ -x "$ROOT/.venv/Scripts/python.exe" ]]; then
+  PY="$ROOT/.venv/Scripts/python.exe"
+elif [[ -x "$ROOT/.venv/bin/python" ]]; then
+  PY="$ROOT/.venv/bin/python"
+else
+  PY=""
+fi
 API_PORT="${NTT_API_PORT:-8808}"
 WEB_PORT="${NTT_WEB_PORT:-5178}"
 
 cd "$ROOT"
 
-if [[ ! -x "$PY" ]]; then
+if [[ -z "$PY" || ! -x "$PY" ]]; then
   echo "python not found at $PY — set NTT_PYTHON to a venv with fastapi, uvicorn," >&2
   echo "pandas, numpy and scikit-learn installed" >&2
   exit 1
 fi
 
 if [[ "${1:-}" == "verify" ]]; then
-  exec "$PY" -m api.scripts.verify
+  cd "$ROOT/api"
+  PYTHONPATH=".." exec "$PY" -m api.scripts.verify
 fi
 
 if lsof -nP -iTCP:"$API_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
@@ -36,7 +52,8 @@ fi
 
 echo "▸ semantic layer   http://127.0.0.1:$API_PORT"
 echo "  3,034 opportunity lines · 36,631 logged changes · 485 findings · closure model v2"
-"$PY" -m uvicorn api.main:app --host 127.0.0.1 --port "$API_PORT" &
+cd "$ROOT/api"
+"$PY" -m uvicorn main:app --host 127.0.0.1 --port "$API_PORT" &
 API_PID=$!
 
 cleanup() {

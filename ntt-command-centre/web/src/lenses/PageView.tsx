@@ -1,5 +1,5 @@
 /**
- * ONE page template, fifteen pages.
+ * Shared Sales and Manager page template. Executive uses ExecutivePage.
  *
  * The composition is fixed and deliberate, because a person who learns one page
  * has learned all of them:
@@ -53,6 +53,7 @@ import { useApp } from "../state/AppStateProvider";
 import { DIM_KEYS } from "../state/filters";
 import { layoutCharts } from "./chartLayout";
 import { useBrief, useView } from "./useView";
+import { ExecutivePage } from "./ExecutivePage";
 
 /* ========================================================================== *
  * Entry point
@@ -80,12 +81,13 @@ function PageBody({ meta, onRetry }: { meta: MetaPayload | null; onRetry: () => 
   // Hooks run unconditionally and in the same order on every render; the brief
   // simply does not fire until the payload it must not repeat has arrived.
   const chartsSay = view.data?.chartsSay ?? NO_CLAIMS;
-  const brief = useBrief(chartsSay, view.data !== null);
+  const brief = useBrief(chartsSay, view.data !== null && state.persona !== "executive");
 
   if (view.error !== null) {
     return <PageError page={state.page} detail={view.error} onRetry={onRetry} />;
   }
   if (view.data === null) return <PageSkeleton page={state.page} />;
+  if (view.data.persona === "executive") return <ExecutivePage payload={view.data} meta={meta} />;
   return <Page payload={view.data} meta={meta} brief={brief} />;
 }
 
@@ -486,6 +488,8 @@ function Empty({ children }: { children: ReactNode }) {
  * ========================================================================== */
 
 function PageExtras({ payload }: { payload: ViewPayload }) {
+  // Kept temporarily for compatibility with recorded pre-migration payloads.
+  void PerformanceBlock; void StructureBlock; void RisksBlock; void TldrBlock;
   const x = payload.extras;
   switch (payload.page) {
     case "my-deals":
@@ -497,14 +501,6 @@ function PageExtras({ payload }: { payload: ViewPayload }) {
     case "calibration":
     case "pod-pulse":
       return <RepsBlock extras={x} />;
-    case "performance":
-      return <PerformanceBlock extras={x} />;
-    case "structure":
-      return <StructureBlock extras={x} />;
-    case "risks":
-      return <RisksBlock extras={x} />;
-    case "tldr":
-      return <TldrBlock extras={x} />;
     default:
       // my-day, my-record, process and actions carry no block of their own:
       // their answer is entirely in the KPIs, the rail and the charts.
@@ -1508,7 +1504,7 @@ const USE_CASE_KEYS = new Set<string>(["opportunities", "anomalies", "closure"])
 const LENSES = new Set<string>([
   "my-day", "my-deals", "my-accounts", "my-record",
   "pod-pulse", "rep-benchmark", "process", "calibration", "pod-whitespace",
-  "tldr", "performance", "structure", "risks", "growth", "actions",
+  "tldr", "opportunities", "anomalies", "closure-risk", "action-center",
 ]);
 
 /**

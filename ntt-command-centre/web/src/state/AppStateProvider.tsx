@@ -34,6 +34,7 @@ interface Api {
   /** The context every API call carries. Memoised so effects do not re-fire. */
   ctx: Ctx;
   setPage: (p: Lens) => void;
+  openAction: (key: string) => void;
   onFilter: (dim: DimKey, value: string) => void;
   setFilter: (dim: DimKey, value: string | null) => void;
   clearFilters: () => void;
@@ -52,6 +53,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const enforce = (s: AppState): AppState => ({
     ...s, persona: user.role, identity: user.identity,
     page: user.pages.includes(s.page) ? s.page : user.home,
+    measure: user.role === "executive" ? "revenue" : s.measure,
   });
   const [state, dispatch] = useReducer(
     (s: AppState, action: Action) => enforce(reducer(s, action)),
@@ -105,6 +107,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       dispatch,
       ctx,
       setPage: (page) => dispatch({ type: "page", page }),
+      openAction: (actionKey) => dispatch({ type: "page", page: "action-center", actionKey }),
       onFilter: (dim, value) => dispatch({ type: "toggleFilter", dim, value }),
       setFilter: (dim, value) => dispatch({ type: "setFilter", dim, value }),
       clearFilters: () => dispatch({ type: "clearFilters" }),

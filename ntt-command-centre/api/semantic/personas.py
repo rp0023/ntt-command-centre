@@ -95,10 +95,10 @@ PERSONAS: dict[str, Persona] = {
         scope_column=None,
         scope_op="all",
         home="tldr",
-        pages=("tldr", "performance", "structure", "risks", "growth", "actions"),
-        # Deal-level worklists belong to the AE. If the exec starts working
-        # deals the product has failed its own org chart.
-        deny_measures=("deal_next_step", "days_silent_by_deal"),
+        pages=("tldr", "opportunities", "anomalies", "closure-risk", "action-center"),
+        deny_measures=("gp", "gross_profit", "margin", "budget", "coverage", "gap",
+                       "profit_plan", "entity_concentration", "deal_next_step",
+                       "days_silent_by_deal"),
         accent="#6F7BF7",
     ),
 }
@@ -300,7 +300,8 @@ def describe(principal: Principal) -> dict:
             "predicate": principal.predicate_sql,
             "home": principal.persona.home,
             "pages": list(principal.persona.pages),
-            "denyMeasures": list(principal.persona.deny_measures),
+            "denyMeasures": ([] if principal.key == "executive"
+                             else list(principal.persona.deny_measures)),
             "accent": principal.persona.accent,
         },
         "personas": [

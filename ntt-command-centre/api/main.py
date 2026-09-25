@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import cast
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
@@ -18,6 +19,7 @@ from semantic import budget as B
 from semantic import catalog as CAT
 from semantic import crosssell as XS
 from semantic import ds_model as DS
+from semantic import executive as EXEC
 from semantic import measures as M
 from semantic import personas as PR
 from semantic import predict as P
@@ -87,7 +89,10 @@ def _principal(request: Request) -> Principal:
 
 
 def _filters(request: Request) -> FilterState:
-    return FilterState.from_query(dict(request.query_params))
+    fs = FilterState.from_query(dict(request.query_params))
+    if _principal(request).key == "executive":
+        return FilterState(country=fs.country, quarter=fs.quarter, measure="revenue")
+    return fs
 
 
 def _charts_say(request: Request) -> list[str]:
@@ -164,6 +169,9 @@ def api_view(request: Request, page: str = Query(default="")) -> dict:
 @app.get("/api/actions")
 def api_actions(request: Request, limit: int = Query(default=12, le=40)) -> dict:
     p = _principal(request)
+    if p.key == "executive":
+        actions = EXEC.payload(_filters(request), p)["actions"][:limit]
+        return {"actions": actions, "persona": p.key, "scope": p.identity_label}
     return {"actions": ACT.build(_filters(request), p, limit=limit),
             "persona": p.key, "scope": p.identity_label}
 
@@ -180,6 +188,10 @@ def api_risk(request: Request, limit: int = Query(default=50, le=300)) -> dict:
     r = P.risk_table()
     codes = set(M.slice_frame(fs, p)["opportunity_code"])
     r = r[r["opportunity_code"].isin(codes)].head(limit)
+    if p.key == "executive":
+        focused = EXEC.payload(fs, p)
+        return {"asOf": AS_OF.isoformat(), "model": focused["closureModel"],
+                "deals": focused["closureExceptions"][:limit]}
     return {
         "asOf": AS_OF.isoformat(),
         "model": P.model_card(),
@@ -208,6 +220,17 @@ def api_deal(opportunity_code: str, request: Request) -> dict:
     detail = P.explain(opportunity_code)
     if not detail:
         raise HTTPException(status_code=404, detail="opportunity is not open")
+    if p.key == "executive":
+        safe_factors = [f for f in detail.get("riskFactors", []) if f.get("key") != "thin_margin"]
+        return {
+            "opportunityCode": detail["opportunityCode"], "name": detail["name"],
+            "account": detail["account"], "owner": detail["owner"], "stage": detail["stage"],
+            "acvRevenue": detail["acvRevenue"], "closeDate": detail["closeDate"],
+            "riskScore": detail["riskScore"], "riskBand": detail["riskBand"],
+            "riskFactors": safe_factors, "quietDays": detail["quietDays"],
+            "closureProbability": detail.get("pWin"),
+            "modelDisclosure": "Closure probability is directional; use observable deal movement to decide.",
+        }
     return {
         **detail,
         "timeline": ANOM.evidence_rows(opportunity_code, 60),
@@ -221,6 +244,11 @@ def api_deal(opportunity_code: str, request: Request) -> dict:
 def api_anomalies(request: Request, limit: int = Query(default=80, le=500)) -> dict:
     p = _principal(request)
     fs = _filters(request)
+    if p.key == "executive":
+        focused = EXEC.payload(fs, p)
+        return {"summary": focused["messages"][1],
+                "findings": focused["anomalyFindings"][:limit],
+                "total": len(focused["anomalyFindings"])}
     a = ANOM.for_persona(p.key)
     if fs.anomaly_category:
         a = a[a["category"] == fs.anomaly_category]
@@ -242,6 +270,8 @@ def api_anomalies(request: Request, limit: int = Query(default=80, le=500)) -> d
 @app.get("/api/accounts")
 def api_accounts(request: Request) -> dict:
     p = _principal(request)
+    if p.key == "executive":
+        raise HTTPException(403, "Account analysis is not part of the focused Executive experience")
     fs = _filters(request)
     return {
         "whitespace": ACC.whitespace(fs, p, limit=40),
@@ -254,6 +284,8 @@ def api_accounts(request: Request) -> dict:
 @app.get("/api/account/{account_code}")
 def api_account(account_code: str, request: Request) -> dict:
     p = _principal(request)
+    if p.key == "executive":
+        raise HTTPException(403, "Account analysis is not part of the focused Executive experience")
     d = ACC.account_detail(account_code, FilterState(), p)
     if not d:
         raise HTTPException(status_code=404, detail="no such account")
@@ -276,6 +308,10 @@ def api_crosssell(request: Request) -> dict:
     number, not a smaller view of the same one.
     """
     p = _principal(request)
+    if p.key == "executive":
+        focused = EXEC.payload(_filters(request), p)
+        return {"plays": focused["opportunityPlays"],
+                "message": focused["messages"][0]}
     fs = _filters(request)
     return {
         "recommendations": XS.unified(fs, p, limit=100),
@@ -314,6 +350,11 @@ def api_brief(request: Request, page: str = Query(default="")) -> dict:
     p = _principal(request)
     fs = _filters(request)
     page = V.resolve_page(page or p.persona.home, p)
+    if p.key == "executive":
+        messages = EXEC.payload(fs, p)["messages"]
+        return {"headline": "Three signals need leadership attention",
+                "sentences": [{"text": m["summary"], "lens": "answer", "claim": None}
+                              for m in messages], "provider": "computed", "degraded": False}
     # The server recomputes what is on screen and unions it with the client's
     # claim, so a stale client cannot unlock a redundant answer.
     server_says = [s for c in V.charts_for(page, fs, p) for s in c["says"]]
@@ -331,12 +372,50 @@ def api_ask(request: Request, q: str = Query(..., min_length=2, max_length=400),
     client's copy of it is never trusted — and the answer is words only.
     """
     p = _principal(request)
+    if p.key == "executive":
+        suggestions = ["Which commitments have the highest closure risk?",
+                       "Which opportunities are ready to pilot?"]
+        if re.search(r"\b(gp|gross[- ]?profit|profit|margin|budget|coverage|plan gap)\b", q, re.I):
+            return {"question": q, "refused": True, "degraded": False, "provider": "computed",
+                    "answer": {"headline": "That measure is outside the Executive experience",
+                               "sentences": [{"text": "Ask about opportunities, anomalies, closure risk, actions, or revenue tied to a closure decision.",
+                                              "lens": "answer", "claim": None}]},
+                    "suggestions": suggestions}
+        focused = EXEC.payload(_filters(request), p)
+        lower = q.lower()
+        if re.search(r"opportun|play|pilot", lower):
+            message = focused["messages"][0]
+            detail = (focused["opportunityPlays"][0]["nextStep"]
+                      if focused["opportunityPlays"] else "No pilot is ready in this scope.")
+        elif re.search(r"anomal|finding|unusual|investig", lower):
+            message = focused["messages"][1]
+            detail = (focused["anomalyFindings"][0]["question"]
+                      if focused["anomalyFindings"] else "No finding needs investigation in this scope.")
+        elif re.search(r"clos|risk|deal|commit", lower):
+            message = focused["messages"][2]
+            detail = (focused["closureExceptions"][0]["mainDriver"]
+                      if focused["closureExceptions"] else "No commitment needs review in this scope.")
+        elif re.search(r"action|owner|due|waiting", lower):
+            message = {"headline": "The Actions Center holds the current decisions",
+                       "summary": f"{len(focused['actions'])} actions are currently available."}
+            detail = focused["actions"][0]["nextStep"] if focused["actions"] else "No action is waiting."
+        else:
+            message = {"headline": "Three signals define the Executive brief",
+                       "summary": " ".join(m["summary"] for m in focused["messages"])}
+            detail = "Open a focused tab to inspect its ranked worklist."
+        return {"question": q, "refused": False, "degraded": False, "provider": "computed",
+                "answer": {"headline": message["headline"],
+                           "sentences": [{"text": message["summary"], "lens": "answer", "claim": None},
+                                         {"text": detail, "lens": "action", "claim": None}]},
+                "suggestions": suggestions}
     return AI.ask(q, _filters(request), p, _charts_say(request), chart_id=chart, page=page)
 
 
 @app.post("/api/ai/explain")
 def api_explain(request: Request, card: dict = Body(...)) -> dict:
     p = _principal(request)
+    if p.key == "executive":
+        raise HTTPException(403, "Use the focused Executive action details")
     fs = _filters(request)
     cards = ACT.build(fs, p, limit=10000)
     actual = next((c for c in cards if c["key"] == card.get("key")), None)
@@ -348,6 +427,8 @@ def api_explain(request: Request, card: dict = Body(...)) -> dict:
 @app.get("/api/ai/next-action/{opportunity_code}")
 def api_next_action(opportunity_code: str, request: Request) -> dict:
     p = _principal(request)
+    if p.key == "executive":
+        raise HTTPException(403, "Deal next-step generation is not available for Executive")
     scoped = set(M.slice_frame(FilterState(), p)["opportunity_code"])
     if opportunity_code not in scoped:
         raise HTTPException(status_code=404, detail="no such opportunity in your scope")
@@ -374,6 +455,8 @@ def api_measures(request: Request) -> dict:
     to the front end, this endpoint could not exist.
     """
     p = _principal(request)
+    if p.key == "executive":
+        raise HTTPException(403, "Raw measures are not part of the focused Executive experience")
     fs = _filters(request)
     return {
         "asOf": AS_OF.isoformat(),
@@ -394,6 +477,8 @@ def api_catalog(request: Request) -> dict:
     business reads the same description of it that our own model does, and can
     check that the definitions match what the screen shows.
     """
+    if _principal(request).key == "executive":
+        raise HTTPException(403, "The raw catalog is not part of the focused Executive experience")
     if _principal(request).key != "executive":
         raise HTTPException(403, "Executive access required")
     return {**CAT.build(), "size": CAT.size_report()}
@@ -409,6 +494,8 @@ def api_query(request: Request, plan: dict = Body(...)) -> dict:
     language model is available or behaving.
     """
     p = _principal(request)
+    if p.key == "executive":
+        raise HTTPException(403, "Raw semantic queries are not part of the focused Executive experience")
     fs = _filters(request)
     try:
         r = Q.execute(plan, fs, p, _charts_say(request))

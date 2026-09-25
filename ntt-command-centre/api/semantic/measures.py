@@ -114,6 +114,7 @@ class FilterState:
     lob: str | None = None
     portfolio: str | None = None
     industry: str | None = None
+    country: str | None = None
     order_type: str | None = None
     quarter: str | None = None
     rep: str | None = None
@@ -134,7 +135,7 @@ class FilterState:
         m = (q.get("measure") or DEFAULT_MEASURE).lower()
         return cls(
             stage=g("stage"), forecast=g("forecast"), lob=g("lob"),
-            portfolio=g("portfolio"), industry=g("industry"),
+            portfolio=g("portfolio"), industry=g("industry"), country=g("country"),
             order_type=g("orderType") or g("order_type"), quarter=g("quarter"),
             rep=g("rep"), account=g("account"), risk_band=g("riskBand"),
             anomaly_category=g("anomalyCategory"),
@@ -146,7 +147,7 @@ class FilterState:
         """Only the dimensions that are actually set."""
         raw = {
             "stage": self.stage, "forecast": self.forecast, "lob": self.lob,
-            "portfolio": self.portfolio, "industry": self.industry,
+            "portfolio": self.portfolio, "industry": self.industry, "country": self.country,
             "orderType": self.order_type, "quarter": self.quarter,
             "rep": self.rep, "account": self.account,
             "riskBand": self.risk_band, "anomalyCategory": self.anomaly_category,

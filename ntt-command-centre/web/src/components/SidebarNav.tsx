@@ -1,7 +1,7 @@
 /**
  * The persona's own navigation.
  *
- * Grouped rather than a flat tab rail, because fifteen pages across three
+ * Grouped rather than a flat tab rail, because fourteen pages across three
  * profiles is a product, not a dashboard — and the grouping is itself
  * information: an AE's pages are their day, their deals, their accounts and
  * their record, in that order, which is the order they think in.
@@ -36,9 +36,8 @@ const GROUPS: Record<PersonaKey, { heading: string; pages: Lens[] }[]> = {
     { heading: "The process", pages: ["process", "pod-whitespace"] },
   ],
   executive: [
-    { heading: "The read", pages: ["tldr"] },
-    { heading: "The numbers", pages: ["performance", "structure"] },
-    { heading: "The decisions", pages: ["risks", "growth", "actions"] },
+    { heading: "Attention", pages: ["tldr", "opportunities", "anomalies", "closure-risk"] },
+    { heading: "Decide", pages: ["action-center"] },
   ],
 };
 
@@ -59,11 +58,10 @@ const ICON: Partial<Record<Lens, IconName>> = {
   calibration: "calibrate",
   "pod-whitespace": "grow",
   tldr: "brief",
-  performance: "plan",
-  structure: "business",
-  risks: "risks",
-  growth: "grow",
-  actions: "decisions",
+  opportunities: "grow",
+  anomalies: "risks",
+  "closure-risk": "deals",
+  "action-center": "decisions",
 };
 
 export function SidebarNav({

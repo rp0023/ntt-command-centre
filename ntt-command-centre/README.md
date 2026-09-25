@@ -139,7 +139,7 @@ risk, what is the variable driving it".
 
 ---
 
-## Three personas, fifteen pages
+## Three personas, fourteen pages
 
 Persona changes the **row set**, not the emphasis. The predicate is applied in `slice_frame` before
 any aggregation — filtering after would leak the denominator and quietly make every percentage wrong.
@@ -148,11 +148,11 @@ any aggregation — filtering after would leak the denominator and quietly make 
 |---|---|---|---|
 | **Account Executive** | own deals | My Day · My Deals · My Accounts · My Track Record | Deal timeline reconstruction with silence gaps drawn to scale |
 | **Sales Manager** | a pod of ~11 reps | Pod Pulse · Rep Benchmark · Process · Calibration · Pod Whitespace | Rep behaviour fingerprint against the all-rep percentile distribution |
-| **Executive** | everything | Executive Brief · Performance · Structure · Risks · Decisions | The board narrative, with the data caveats volunteered rather than caught |
+| **Executive** | everything | Brief / Opportunities / Anomalies / Closure Risk / Actions Center | Three consistent leadership signals and one browser-persistent decision workspace |
 
 A persona cannot reach another's page — a deep link redirects to its own home. Actions carry
 role-appropriate verbs: an AE gets *call this account today*, a manager *coach this rep*, an
-executive *reallocate coverage to this LOB*.
+executive *approve a pilot, investigate an anomaly, or review a commitment*.
 
 **Pods are derived and the product says so.** The extract has no manager or team column. The 70 reps
 are snake-drafted by owned GP into 6 pods so every pod holds a comparable mix; the rule is printed
@@ -167,9 +167,9 @@ right were right, and re-inventing them would have been vanity.
 
 | | |
 |---|---|
-| **Grouped sidebar** | Not a tab rail. Fourteen pages across three profiles is a product, so pages are grouped ("Today / My book / Me", "The read / The numbers / The decisions") and each item carries its page's stated question as its second line — *Calibration* alone does not tell you whether it is the page you want. Built from `meta.pages`, so a profile cannot see the name of someone else's page. |
+| **Grouped sidebar** | Fourteen pages across three profiles are grouped by decision. Executive navigation is limited to Brief, Opportunities, Anomalies, Closure Risk and Actions Center. Built from `meta.pages`, so a profile cannot see the name of someone else's page. |
 | **Contextual filters** | A dimension represented by a chart is selected in that chart's header; remaining role-permitted dimensions live in the page's compact **More filters** popover. Active filters stay visible below the question. Every selection refetches and recomputes the whole page on the server, because filtering browser-side would leave percentages with the wrong denominator. |
-| **Metric summary banners** | One primary and two supporting banners retain every page metric as a referenceable figure, with a sparkline **only where a real series exists**. Snapshot measures with no history get no invented trend. |
+| **Metric summary banners** | Sales and Manager pages use one primary and two supporting banners. Executive Brief uses one weekly pipeline banner above five ranked insights; its detail pages have no generic KPI banners or charts. |
 | **Findings bell** | Badged with what needs a decision now, not an unread count. There is nothing to mark as read. |
 | **Ask** | In the header and as a floating action, because it must be reachable from every page and the header collapses on narrow screens. |
 
@@ -318,7 +318,7 @@ api/main.py               THE API BOUNDARY — auth and RLS attach here and nowh
         │
 web/src/                  THE FRONT END — draws payloads, computes nothing
            charts/        the D3 repository, indexed by data shape
-           lenses/        one page template, fifteen pages
+           lenses/        shared Sales/Manager template plus focused Executive pages, fourteen total
            state/         one reducer, mirrored into the URL
 ```
 

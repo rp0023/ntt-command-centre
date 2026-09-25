@@ -44,6 +44,8 @@ export interface AppState {
   askSeed: AskSeed | null;
   /** An open drawer: "deal:<code>" | "account:<code>" | "card:<key>". */
   drawer: string | null;
+  /** Expanded action in the Executive Actions Center. */
+  actionKey: string | null;
 }
 
 export const INITIAL: AppState = {
@@ -56,12 +58,13 @@ export const INITIAL: AppState = {
   askQuery: "",
   askSeed: null,
   drawer: null,
+  actionKey: null,
 };
 
 export type Action =
   | { type: "persona"; persona: PersonaKey; identity?: string }
   | { type: "identity"; identity: string }
-  | { type: "page"; page: Lens }
+  | { type: "page"; page: Lens; actionKey?: string }
   | { type: "toggleFilter"; dim: DimKey; value: string }
   | { type: "setFilter"; dim: DimKey; value: string | null }
   | { type: "clearFilters" }
@@ -93,7 +96,7 @@ export function reducer(s: AppState, a: Action): AppState {
     case "identity":
       return { ...s, identity: a.identity, filters: { ...EMPTY_FILTERS }, drawer: null };
     case "page":
-      return { ...s, page: a.page, drawer: null };
+      return { ...s, page: a.page, actionKey: a.actionKey ?? null, drawer: null };
     case "toggleFilter": {
       // Clicking an active value clears it, like a pivot-table slicer.
       const cur = s.filters[a.dim];
@@ -133,12 +136,18 @@ export function toQuery(s: AppState): string {
   for (const k of DIM_KEYS) if (s.filters[k]) p.set(k, s.filters[k] as string);
   if (s.ask) p.set("ask", "1");
   if (s.drawer) p.set("drawer", s.drawer);
+  if (s.actionKey && s.page === "action-center") p.set("action", s.actionKey);
   return p.toString();
 }
 
 export function fromQuery(search: string): Partial<AppState> {
   const p = new URLSearchParams(search);
-  const page = p.get("page");
+  const requestedPage = p.get("page");
+  const legacy: Record<string, Lens> = {
+    growth: "opportunities", risks: "anomalies", actions: "action-center",
+    performance: "tldr", structure: "tldr",
+  };
+  const page = requestedPage ? (legacy[requestedPage] ?? requestedPage) : null;
   const filters: Partial<FilterMap> = {};
   for (const k of DIM_KEYS) {
     const v = p.get(k);
@@ -148,6 +157,7 @@ export function fromQuery(search: string): Partial<AppState> {
   if (page) out.page = page as Lens;
   out.ask = p.get("ask") === "1";
   out.drawer = p.get("drawer");
+  out.actionKey = p.get("action");
   const m = p.get("measure");
   out.measure = m === "revenue" ? "revenue" : "gp";
   return out;

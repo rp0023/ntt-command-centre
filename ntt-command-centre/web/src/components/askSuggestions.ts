@@ -26,11 +26,9 @@ export const SUGGESTIONS: Record<PersonaKey, string[]> = {
     "How much of the pod's pipeline has stopped moving?",
   ],
   executive: [
-    "Which line of business has the weakest margin?",
-    "Which accounts are biggest by gross profit?",
-    "How has closed-won tracked by month?",
-    "Where is open pipeline concentrated by industry?",
-    "Are we on track against plan this quarter?",
-    "What needs fixing, and what is it worth?",
+    "Which commitments have the highest closure risk?",
+    "Which opportunities are ready to pilot?",
+    "Which anomalies need investigation?",
+    "What is waiting in the Actions Center?",
   ],
 };

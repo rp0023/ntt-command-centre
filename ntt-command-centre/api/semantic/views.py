@@ -1,10 +1,10 @@
 """
-Page assembly — fifteen pages across three personas, one payload shape.
+Page assembly — fourteen pages across three personas.
 
 Every page answers exactly ONE stated question and is built from the same parts:
 a question, metric summary banners, a narrative, action items, charts, and the evidence
-behind them. That repetition is what makes fifteen pages tractable; each page
-then adds only the block that answers its own question.
+behind them. Sales and Manager share that template; Executive uses a smaller
+focused payload built in `executive.py`.
 
 **The personas do not share pages.** An AE's "My Day" and an executive's "TLDR"
 are not the same screen with a different filter — they have different questions,
@@ -58,12 +58,16 @@ PAGES: dict[str, tuple[str, str, str]] = {
     "calibration": ("manager", "Whose numbers", "Whose forecast can I trust?"),
     "pod-whitespace": ("manager", "Grow accounts", "What should the team sell next?"),
     # Executive
-    "tldr": ("executive", "Brief", "What do I need to know?"),
-    "performance": ("executive", "Against plan", "Are we on track?"),
-    "structure": ("executive", "The business", "Where does the money sit?"),
-    "risks": ("executive", "What is wrong", "What needs fixing, and what is it worth?"),
-    "growth": ("executive", "Where to grow", "Which growth ideas repeat often enough to run as a play?"),
-    "actions": ("executive", "Decisions", "What needs deciding now?"),
+    "tldr": ("executive", "Brief", "What needs attention?"),
+    "opportunities": ("executive", "Opportunities", "Which plays are ready to run?"),
+    "anomalies": ("executive", "Anomalies", "What looks unusual enough to investigate?"),
+    "closure-risk": ("executive", "Closure Risk", "Which commitments are least likely to close?"),
+    "action-center": ("executive", "Actions Center", "What is owned, due, or waiting?"),
+}
+
+EXECUTIVE_LEGACY_PAGES = {
+    "growth": "opportunities", "risks": "anomalies", "actions": "action-center",
+    "performance": "tldr", "structure": "tldr",
 }
 
 
@@ -76,6 +80,8 @@ def pages_for(persona: str) -> list[dict]:
 
 def resolve_page(page: str, principal: Principal) -> str:
     """A persona that asks for someone else's page lands on its own home."""
+    if principal.key == "executive":
+        page = EXECUTIVE_LEGACY_PAGES.get(page, page)
     if page in PAGES and PAGES[page][0] == principal.key:
         return page
     return principal.persona.home
@@ -132,6 +138,8 @@ def charts_for(page: str, fs: FilterState, principal: Principal) -> list[dict]:
     twice anywhere.
     """
     p = principal
+    if p.key == "executive":
+        return []
     if page == "my-day":
         return [C.deal_triage_bubble(fs, p), C.risk_by_band(fs, p)]
     if page == "my-deals":
@@ -339,6 +347,10 @@ def view(page: str, fs: FilterState, principal: Principal) -> dict:
 
     page = resolve_page(page, principal)
     persona, label, question = PAGES[page]
+    if principal.key == "executive":
+        from . import executive as EXEC
+
+        return EXEC.view(page, fs, principal, label, question)
     m = measures(fs, principal)
     ch = charts_for(page, fs, principal)
     cards = ACT.build(fs, principal,
@@ -384,6 +396,10 @@ def meta(principal: Principal) -> dict:
     changes = movement()
     changes = changes[changes["opportunity_code"].isin(frame["opportunity_code"])]
     findings = ANOM.scoped(ANOM.for_persona(principal.key), FilterState(), principal)
+    dimensions = describe_dims(rls_frame(principal))
+    if principal.key == "executive":
+        by_key = {d["key"]: d for d in dimensions}
+        dimensions = [by_key[key] for key in ("country", "quarter") if key in by_key]
     return {
         "asOf": AS_OF.isoformat(),
         "fy": fy_label(2026),
@@ -396,9 +412,11 @@ def meta(principal: Principal) -> dict:
         # off the whole fact table, a manager's rep list said "All 70" for a
         # pod of eleven and an AE's account list offered 357 accounts of which
         # they own a dozen — every other value was a filter to an empty page.
-        "dimensions": describe_dims(rls_frame(principal)),
-        "measures": [{"key": "gp", "label": "ACV GP", "default": True},
-                     {"key": "revenue", "label": "ACV Revenue", "default": False}],
+        "dimensions": dimensions,
+        "measures": ([{"key": "revenue", "label": "ACV Revenue", "default": True}]
+                     if principal.key == "executive" else
+                     [{"key": "gp", "label": "ACV GP", "default": True},
+                      {"key": "revenue", "label": "ACV Revenue", "default": False}]),
         "data": {
             "lines": int(len(frame)), "opportunities": int(frame["opportunity_code"].nunique()),
             "accounts": int(frame["account_code"].nunique()), "reps": int(frame["owner"].nunique()),
@@ -415,12 +433,13 @@ def meta(principal: Principal) -> dict:
                 "own validation, carried through rather than summarised."
             ),
         },
-        "modelCard": P.model_card(),
-        "dsModel": ds_model.model_card() if ds_model.available()
-        else ds_model.unavailable_card(),
-        "anomalyTaxonomy": {
+        "modelCard": {} if principal.key == "executive" else P.model_card(),
+        "dsModel": ({} if principal.key == "executive" else
+                    (ds_model.model_card() if ds_model.available()
+                     else ds_model.unavailable_card())),
+        "anomalyTaxonomy": ({"categories": []} if principal.key == "executive" else {
             "categories": [{"name": c, "question": ANOM.CATEGORY_BLURB[c]}
                            for c in ANOM.CATEGORY_ORDER],
-        },
+        }),
         "stallThreshold": STALL_DAYS,
     }

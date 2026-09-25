@@ -13,7 +13,7 @@ export type PersonaKey = "ae" | "manager" | "executive";
 export type Lens =
   | "my-day" | "my-deals" | "my-accounts" | "my-record"
   | "pod-pulse" | "rep-benchmark" | "process" | "calibration" | "pod-whitespace"
-  | "tldr" | "performance" | "structure" | "risks" | "growth" | "actions";
+  | "tldr" | "opportunities" | "anomalies" | "closure-risk" | "action-center";
 
 export type DimKey =
   | "stage" | "forecast" | "lob" | "portfolio" | "industry"
@@ -207,6 +207,61 @@ export interface ViewPayload {
   chartsSay: string[];
   extras: Record<string, unknown>;
   measures: Record<string, unknown>;
+  executive?: ExecutivePayload;
+}
+
+export type ExecutiveTheme = "opportunities" | "anomalies" | "closure";
+export interface ExecutiveMessage {
+  key: ExecutiveTheme;
+  title: string;
+  headline: string;
+  summary: string;
+  signals: { label: string; value: string }[];
+  page: Lens;
+}
+export interface ExecutivePlay {
+  key: string; offering: string; customerCount: number; ownerCount: number;
+  confidence: string; pilotAccount: string; pilotOwner: string;
+  nextStep: string; reason: string;
+}
+export interface ExecutiveFinding {
+  key: string; severity: Urgency; entityType: string; entity: string;
+  category: string; agreement: string; evidence: string; owner: string;
+  question: string; nextStep: string;
+}
+export interface ClosureException {
+  key: string; deal: string; account: string; owner: string; stage: string;
+  riskBand: RiskBand; riskScore: number; closureProbability: number | null;
+  mainDriver: string; closeDate: string | null; silenceDays: number | null;
+  revenue: number; formattedRevenue: string;
+}
+export interface ExecutiveActionOption {
+  key: string; label: string; status: string; needsReason: boolean;
+}
+export interface ExecutiveAction {
+  key: string; theme: ExecutiveTheme; priority: Urgency; owner: string;
+  dueDate: string; headline: string; nextStep: string;
+  revenueImpact?: number; formattedRevenueImpact?: string;
+  options: ExecutiveActionOption[];
+}
+export interface ExecutiveWeeklyBanner {
+  tone: Tone; headline: string; subline: string;
+  stats: { label: string; value: string; tone: Tone }[];
+}
+export interface ExecutiveWeeklyInsight {
+  key: string; rank: number; theme: ExecutiveTheme; title: string;
+  conclusion: string; evidence: string[]; nextStep: string;
+  page: Lens; entity: string;
+}
+export interface ExecutivePayload {
+  messages: ExecutiveMessage[];
+  opportunityPlays: ExecutivePlay[];
+  anomalyFindings: ExecutiveFinding[];
+  closureExceptions: ClosureException[];
+  closureModel: { available: boolean; testAuc?: number | null; text: string };
+  actions: ExecutiveAction[];
+  weeklyBanner: ExecutiveWeeklyBanner | null;
+  weeklyInsights: ExecutiveWeeklyInsight[];
 }
 
 export interface PersonaDef {

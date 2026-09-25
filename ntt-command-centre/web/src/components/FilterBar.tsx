@@ -7,7 +7,7 @@ export type MetaDimension = MetaPayload["dimensions"][number];
 export const FILTER_DIMS_BY_PERSONA: Record<PersonaKey, DimKey[]> = {
   ae: ["stage", "forecast", "lob", "portfolio", "account", "orderType"],
   manager: ["rep", "stage", "lob", "portfolio", "orderType", "quarter"],
-  executive: ["lob", "portfolio", "industry", "country", "quarter", "orderType", "stage"],
+  executive: ["country", "quarter"],
 };
 
 const LONG_LIST = 25;

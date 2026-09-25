@@ -49,6 +49,60 @@ class AuthFlowTests(unittest.TestCase):
     def headers(self, account_id="sales-brian.thompson"):
         return {"Authorization": "Bearer " + self.tokens[account_id]}
 
+    def test_focused_executive_experience(self):
+        headers = self.headers("executive-na")
+        meta = self.client.get("/api/meta", headers=headers).json()
+        self.assertEqual([p["key"] for p in meta["pages"]],
+                         ["tldr", "opportunities", "anomalies", "closure-risk", "action-center"])
+        self.assertEqual({d["key"] for d in meta["dimensions"]}, {"country", "quarter"})
+        self.assertEqual(meta["measures"], [{"key": "revenue", "label": "ACV Revenue", "default": True}])
+
+        payloads = {}
+        forbidden = ("gross profit", "gross-profit", '"gp"', "margin", "budget",
+                     "coverage", "plan gap", "profit plan", "acvgp", "valueatstake")
+        for page in ["tldr", "opportunities", "anomalies", "closure-risk", "action-center"]:
+            response = self.client.get(f"/api/view?page={page}&measure=gp&lob=Security", headers=headers)
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            payloads[page] = payload
+            self.assertEqual(payload["measure"], "revenue")
+            self.assertEqual(payload["charts"], [])
+            self.assertEqual(payload["kpis"], [])
+            self.assertEqual(payload["metricBanners"], [])
+            encoded = json.dumps(payload).lower()
+            self.assertTrue(all(term not in encoded for term in forbidden), (page, encoded))
+
+        brief_messages = {m["key"]: m for m in payloads["tldr"]["executive"]["messages"]}
+        weekly = payloads["tldr"]["executive"]
+        self.assertIsNotNone(weekly["weeklyBanner"])
+        self.assertEqual(len(weekly["weeklyInsights"]), 5)
+        self.assertEqual([i["rank"] for i in weekly["weeklyInsights"]], [1, 2, 3, 4, 5])
+        self.assertTrue(all(i["theme"] == "closure" for i in weekly["weeklyInsights"][:3]))
+        self.assertEqual({i["theme"] for i in weekly["weeklyInsights"][3:]},
+                         {"opportunities", "anomalies"})
+        for page, key in (("opportunities", "opportunities"), ("anomalies", "anomalies"),
+                          ("closure-risk", "closure")):
+            detail = {m["key"]: m for m in payloads[page]["executive"]["messages"]}
+            self.assertEqual(brief_messages[key], detail[key])
+            self.assertIsNone(payloads[page]["executive"]["weeklyBanner"])
+            self.assertEqual(payloads[page]["executive"]["weeklyInsights"], [])
+        self.assertEqual({a["theme"] for a in payloads["tldr"]["executive"]["actions"]},
+                         {"opportunities", "anomalies", "closure"})
+
+        for old, new in (("growth", "opportunities"), ("risks", "anomalies"),
+                         ("actions", "action-center"), ("performance", "tldr"),
+                         ("structure", "tldr")):
+            self.assertEqual(self.client.get(f"/api/view?page={old}", headers=headers).json()["page"], new)
+
+        refused = self.client.get("/api/ai/ask?q=Show%20gross%20profit%20margin", headers=headers).json()
+        self.assertTrue(refused["refused"])
+        deal_key = payloads["closure-risk"]["executive"]["closureExceptions"][0]["key"]
+        detail = self.client.get(f"/api/deal/{deal_key}", headers=headers)
+        self.assertEqual(detail.status_code, 200)
+        encoded_detail = json.dumps(detail.json()).lower()
+        self.assertTrue(all(term not in encoded_detail for term in forbidden), encoded_detail)
+        self.assertEqual(self.client.get("/api/v1/measures", headers=headers).status_code, 403)
+
     def test_setup_is_idempotent(self):
         original = self.registry_path.read_bytes(), self.sheet.read_bytes()
         self.assertEqual(setup(self.registry_path, self.sheet)[0], 0)

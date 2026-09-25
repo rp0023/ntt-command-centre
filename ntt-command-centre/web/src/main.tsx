@@ -21,6 +21,7 @@ import "./styles/icons.css";
 import "./styles/tags.css";
 import "./styles/findings.css";
 import "./styles/metric-banners.css";
+import "./styles/executive.css";
 
 // StrictMode stays ON deliberately: it double-invokes every effect, which is
 // exactly the condition the chart repository's render/teardown contract has to

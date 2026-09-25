@@ -312,53 +312,10 @@ def main() -> int:
     # it is; a figure read against the plan must NOT move, because the plan is
     # set in gross profit, and must say so.
     rev = M.FilterState(measure="revenue")
-    gp_tiles = {t["key"]: t for t in V.view("tldr", fs, exec_p)["kpis"]}
-    rev_tiles = {t["key"]: t for t in V.view("tldr", rev, exec_p)["kpis"]}
-    for key in ("open", "won"):
-        assert_true(f"executive brief '{key}' tile follows the measure",
-                    rev_tiles[key]["value"] != gp_tiles[key]["value"]
-                    and "revenue" in rev_tiles[key]["sub"]
-                    and "revenue" not in gp_tiles[key]["sub"],
-                    f"{gp_tiles[key]['formatted']} GP → {rev_tiles[key]['formatted']} revenue")
-    check("revenue open pipeline is the revenue column",
-          round(rev_tiles["open"]["value"]), round(m["open"]["revenue"]))
-    check("revenue won is the revenue column",
-          round(rev_tiles["won"]["value"]), round(m["won"]["revenue"]))
-    assert_true("the revenue won tile says where the plan lives",
-                "gross profit" in rev_tiles["won"]["sub"], rev_tiles["won"]["sub"])
-    # The sparkline is a month-end reconstruction, not today's snapshot, so it
-    # is checked as a series: a revenue line sits above the GP line at every
-    # month, and is not the GP line relabelled.
-    gs, rs = gp_tiles["open"]["spark"], rev_tiles["open"]["spark"]
-    assert_true("the revenue open tile's sparkline is a revenue series",
-                len(rs) == len(gs) > 0 and rs != gs and all(r >= g for r, g in zip(rs, gs)),
-                f"{len(rs)} points, last {M.money(rs[-1]) if rs else '—'} against "
-                f"{M.money(gs[-1]) if gs else '—'} GP")
-    assert_true("the coverage tile stays gross profit and says so",
-                rev_tiles["cover"]["value"] == gp_tiles["cover"]["value"]
-                and "gross profit" in rev_tiles["cover"]["sub"],
-                rev_tiles["cover"]["sub"])
-    gp_ch = {c["id"]: c for c in V.charts_for("structure", fs, exec_p)}
-    rev_ch = {c["id"]: c for c in V.charts_for("structure", rev, exec_p)}
-    for cid in ("account_treemap", "industry_flow"):
-        assert_true(f"{cid} is drawn in revenue when asked",
-                    rev_ch[cid]["data"] != gp_ch[cid]["data"]
-                    and rev_ch[cid]["measureLabel"] == "ACV Revenue"
-                    and gp_ch[cid]["measureLabel"] == "ACV GP"
-                    and all(k.startswith("rev.") for k in rev_ch[cid]["says"]),
-                    f"says {rev_ch[cid]['says']}")
-    top = next(n for n in rev_ch["account_treemap"]["data"]["nodes"] if n["id"] != "root")
-    check("the revenue treemap's largest tile is that account's revenue",
-          round(top["value"]),
-          round(M.slice_frame(fs, exec_p).groupby("account_code")["acv_revenue"].sum().max()))
-    for fn in (C.gp_bridge, C.month_vs_plan, C.coverage_heat):
-        a, b = fn(fs, exec_p), fn(rev, exec_p)
-        assert_true(f"{a['id']} is plan-based and does not move with the toggle",
-                    a["data"] == b["data"] and "gross profit" in b["subtitle"].lower()
-                    and not any(k.startswith("rev.") for k in b["says"]),
-                    b["subtitle"][:70])
-    check("coverage is identical under either measure",
-          B.totals(rev, exec_p)["coverage"], B.totals(fs, exec_p)["coverage"])
+    executive = V.view("tldr", fs, exec_p)
+    assert_true("the Executive experience is fixed to revenue",
+                executive["measure"] == "revenue" and not executive["kpis"]
+                and not executive["charts"], executive["measure"])
     ae_gp = {t["key"]: t for t in V.view("my-day", fs, ae)["kpis"]}
     ae_rev = {t["key"]: t for t in V.view("my-day", rev, ae)["kpis"]}
     assert_true("the AE's open pipeline tile switches to revenue",
@@ -372,15 +329,14 @@ def main() -> int:
           round(P.risk_table().pipe(
               lambda r: r[r["opportunity_code"].isin(set(M.slice_frame(fs, ae)["opportunity_code"]))
                           & r["risk_band"].isin(("High", "Critical"))])["acv_revenue"].sum()))
-    # The growth page's biggest play is a count of customers, not a headline.
-    big = next(t for t in V.view("growth", fs, exec_p)["kpis"] if t["key"] == "biggest")
-    assert_true("the biggest play is stated as a number of customers",
-                big["formatted"].isdigit() and int(big["formatted"]) == int(big["value"])
-                and "owners" in big["sub"],
-                f"{big['formatted']} · {big['sub']}")
+    big = V.view("opportunities", rev, exec_p)["executive"]["opportunityPlays"][0]
+    assert_true("the biggest play is a customer-and-owner count",
+                isinstance(big["customerCount"], int) and big["customerCount"] > 1
+                and big["ownerCount"] > 1,
+                f"{big['customerCount']} customers ? {big['ownerCount']} owners")
 
     print("\n── PERSONAS, PAGES AND CHARTS ───────────────────────────────────────")
-    check("pages", len(V.PAGES), 15)
+    check("pages", len(V.PAGES), 14)
     for key in PR.PERSONA_KEYS:
         p = PR.resolve(key)
         pages = [k for k, v in V.PAGES.items() if v[0] == key]
@@ -408,7 +364,7 @@ def main() -> int:
                     and all(dim in C.REGISTRY for dim in filter_dims)
                     and all(dim in C.FILTER_DIMS_BY_PERSONA[key] for dim in filter_dims)
                 )
-            if not payload["kpis"]:
+            if key != "executive" and not payload["kpis"]:
                 claims_ok = False
             banners = payload.get("metricBanners", [])
             metric_keys = [kpi["key"] for kpi in payload["kpis"]]
@@ -419,16 +375,16 @@ def main() -> int:
                 or len(next(kpi for kpi in payload["kpis"]
                             if kpi["key"] == banner["trendMetricKey"])["spark"]) >= 3
                 for banner in banners)
-            banners_ok = banners_ok and (
+            banners_ok = banners_ok and (key == "executive" or (
                 len(banners) == 3
                 and [b["prominence"] for b in banners] == ["primary", "supporting", "supporting"]
                 and len(referenced) == len(set(referenced))
                 and set(referenced) == set(metric_keys)
-                and valid_trends)
+                and valid_trends))
     assert_true("every chart declares what it says", claims_ok)
     assert_true("contextual chart filters are valid for the persona", contextual_filters_ok)
     assert_true("every page summarizes each metric once in three banners", banners_ok)
-    check("distinct chart types in use", len(used_keys), 14)
+    check("distinct chart types in use", len(used_keys), 11)
 
     # One chart, one page. Within a persona a chart id may appear on exactly
     # one page — the customer's words were that a chart repeated across a
@@ -441,7 +397,7 @@ def main() -> int:
         thin: list[str] = []
         for page in [k for k, v in V.PAGES.items() if v[0] == key]:
             ids = [c["id"] for c in V.charts_for(page, fs, p)]
-            if len(ids) < 2:
+            if key != "executive" and len(ids) < 2:
                 thin.append(page)
             for cid in ids:
                 placed.setdefault(cid, []).append(page)
@@ -449,15 +405,16 @@ def main() -> int:
         assert_true(f"{key}: no chart appears on two pages", not dupes,
                     "; ".join(f"{c} on {', '.join(pg)}" for c, pg in dupes.items())
                     or f"{len(placed)} distinct charts")
-        assert_true(f"{key}: every page carries two or more charts", not thin,
-                    ", ".join(thin) or "all pages")
+        assert_true(f"{key}: focused pages use the expected chart policy",
+                    (not placed if key == "executive" else not thin),
+                    ", ".join(thin) or f"{len(placed)} distinct charts")
 
     # The executive brief names the three use cases and opens their pages.
-    uc = V.view("tldr", fs, exec_p)["extras"].get("useCases") or []
+    uc = V.view("tldr", fs, exec_p)["executive"]["messages"]
     check("the brief states the three use cases",
           [u["key"] for u in uc], ["opportunities", "anomalies", "closure"])
-    assert_true("each use case carries formatted figures and a page",
-                all(len(u["figures"]) >= 2 and all(f["formatted"] for f in u["figures"])
+    assert_true("each use case carries signals and a focused page",
+                all(len(u["signals"]) == 3 and all(f["value"] for f in u["signals"])
                     and V.PAGES[u["page"]][0] == "executive" for u in uc))
 
     # The overdue stack: a deal whose close date has not arrived sits in "Not
@@ -480,8 +437,7 @@ def main() -> int:
                 set(ae_dims["account"]) == set(M.slice_frame(fs, ae)["account_name"]),
                 f"{len(ae_dims['account'])} accounts")
     assert_true("the advanced chart set is actually used",
-                {"waterfall.bridge", "combo.columnline", "funnel.stage",
-                 "bubble.scatter", "mekko.marimekko", "treemap.nested",
+                {"funnel.stage", "bubble.scatter", "mekko.marimekko", "treemap.nested",
                  "sankey.flow", "gantt.timeline"} <= used_keys,
                 ", ".join(sorted(used_keys)))
 
@@ -501,21 +457,16 @@ def main() -> int:
     # The rail answers the page. Every page of a persona used to get the same
     # cards; now the cards that answer the page's question lead, and nothing is
     # lost — the same deduplicated set, re-ordered.
-    lead = {page: [c["headline"] for c in V.view(page, fs, exec_p)["actions"]][:3]
-            for page in ("tldr", "performance", "structure", "risks", "growth")}
-    assert_true("executive pages lead with different cards",
-                len({tuple(v) for v in lead.values()}) == len(lead),
-                "; ".join(f"{k}: {v[0][:28]}" for k, v in lead.items()))
-    assert_true("the risks page leads with risk-framed cards",
-                all(c["framing"] == "risk"
-                    for c in V.view("risks", fs, exec_p)["actions"][:3]))
-    assert_true("the growth page leads with opportunity-framed cards",
-                all(c["framing"] == "opportunity"
-                    for c in V.view("growth", fs, exec_p)["actions"][:2]))
-    assert_true("the structure page leads with concentration",
-                all(c["kind"] == "concentration"
-                    for c in V.view("structure", fs, exec_p)["actions"][:3]))
-    for key in PR.PERSONA_KEYS:
+    brief_actions = V.view("tldr", fs, exec_p)["executive"]["actions"]
+    assert_true("the brief carries one action from every message domain",
+                {a["theme"] for a in brief_actions} == {"opportunities", "anomalies", "closure"},
+                ", ".join(a["theme"] for a in brief_actions))
+    for page, theme in (("opportunities", "opportunities"), ("anomalies", "anomalies"),
+                        ("closure-risk", "closure")):
+        focused = V.view(page, fs, exec_p)["executive"]["actions"]
+        assert_true(f"{page}: carries only its own actions",
+                    focused and all(a["theme"] == theme for a in focused))
+    for key in ("ae", "manager"):
         pr = PR.resolve(key)
         few = [page for page, v in V.PAGES.items() if v[0] == key
                and len(V.view(page, fs, pr)["actions"]) < 3]
@@ -523,7 +474,7 @@ def main() -> int:
                     ", ".join(few) or "all pages")
 
     print("\n── THE DECISION CARD CONTRACT ───────────────────────────────────────")
-    for key in ("ae", "manager", "executive"):
+    for key in ("ae", "manager"):
         pr = PR.resolve(key)
         cards = ACT.build(fs, pr, limit=40)
         assert_true(f"{key}: every card offers two or more real choices",
@@ -543,7 +494,7 @@ def main() -> int:
     print("\n── THE AI CANNOT REPEAT THE CHARTS ──────────────────────────────────")
     from ..llm import grounding as G
 
-    payload = V.view("tldr", fs, exec_p)
+    payload = V.view("my-day", fs, ae)
     says = payload["chartsSay"]
     assert_true("the page publishes its claim keys", len(says) > 0, ", ".join(says))
     kept, dropped = G.strip_redundant(
@@ -571,7 +522,7 @@ def main() -> int:
     from ..semantic import query as Q
 
     plan = {"intent": "rank", "metric": "gp", "subset": "open", "breakdown": ["lob"]}
-    res = Q.execute(plan, fs, exec_p, [])
+    res = Q.execute(plan, fs, mgr, [])
     assert_true("a valid plan executes over the semantic layer", len(res.rows) == 4,
                 f"{len(res.rows)} rows, rendered as {res.chart_key}")
     try:
