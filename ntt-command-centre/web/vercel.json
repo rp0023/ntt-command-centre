@@ -3,5 +3,18 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://ntt-command-centre.onrender.com/api/:path*"
+    },
+    {
+      "source": "/healthz",
+      "destination": "https://ntt-command-centre.onrender.com/healthz"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }
