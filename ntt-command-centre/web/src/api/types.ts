@@ -255,6 +255,9 @@ export interface ClosureException {
   forecastCategory: string;
   riskBand: RiskBand; riskScore: number; closureProbability: number | null;
   mainDriver: string; closeDate: string | null; silenceDays: number | null;
+  accountCycleDays: number | null; accountCycleSampleSize: number;
+  plannedCycleDays: number | null; accountCycleGapDays: number;
+  accountCycleMismatch: boolean; accountCycleContext: string | null;
   isStalled: boolean; closeDateSlips: number; slipDays: number;
   deterioration: string;
   revenue: number; formattedRevenue: string;

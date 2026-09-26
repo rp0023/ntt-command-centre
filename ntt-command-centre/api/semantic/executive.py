@@ -11,7 +11,7 @@ from . import anomalies as ANOM
 from . import crosssell as XS
 from . import ds_model as DS
 from . import predict as P
-from .loader import AS_OF, CUR_QUARTER, fy_label
+from .loader import AS_OF, CUR_QUARTER, fy_label, opportunities
 from .measures import FilterState, count, money, slice_frame
 from .personas import Principal
 
@@ -220,6 +220,32 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
     risk = P.risk_table()
     codes = set(slice_frame(fs, principal)["opportunity_code"])
     risk = risk[risk["opportunity_code"].isin(codes)].copy()
+    history_codes = set(slice_frame(FilterState(measure="revenue"), principal)["opportunity_code"])
+    history = opportunities()
+    history = history.loc[
+        history["opportunity_code"].isin(history_codes)
+        & history["is_closed"]
+        & history["cycle_days"].gt(0)
+        & history["close_date"].le(pd.Timestamp(AS_OF))
+    ]
+    account_cycles = history.groupby("account_code")["cycle_days"].agg(
+        account_cycle_sample_size="count", account_cycle_days="median",
+    )
+    risk = risk.merge(account_cycles, left_on="account_code", right_index=True, how="left")
+    risk["account_cycle_sample_size"] = risk["account_cycle_sample_size"].fillna(0).astype(int)
+    risk["planned_cycle_days"] = (
+        risk["age_days"] + risk["days_to_close"].clip(lower=0)
+    ).astype(int)
+    risk["account_cycle_gap_days"] = (
+        risk["account_cycle_days"] - risk["planned_cycle_days"]
+    )
+    target_quarter = fs.quarter or CUR_QUARTER
+    risk["account_cycle_mismatch"] = (
+        risk["fiscal_quarter"].eq(target_quarter)
+        & risk["account_cycle_sample_size"].ge(3)
+        & risk["account_cycle_gap_days"].ge(30)
+        & risk["account_cycle_gap_days"].ge(risk["account_cycle_days"] * .25)
+    )
     hot = risk[risk["risk_band"].isin(("High", "Critical"))]
     ds = pd.DataFrame()
     if DS.available():
@@ -249,6 +275,8 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
         low = candidates[candidates["closure_probability"] < .5]
         select_one(low if len(low) else candidates,
                    ["closure_probability", "risk_score"], [True, False])
+    select_one(risk[risk["account_cycle_mismatch"]],
+               ["account_cycle_gap_days", "acv_revenue"], [False, False])
     select_one(risk[risk["is_stalled"]], ["risk_score", "quiet_days"], [False, False])
     select_one(risk[risk["close_date_slips"] > 0], ["risk_score", "slip_days"], [False, False])
     for code in risk.sort_values(["risk_score", "close_date"], ascending=[False, True])[
@@ -293,6 +321,24 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             deterioration.append(f"{row.days_past_due} days past due")
         if not deterioration and bool(row.is_stalled):
             deterioration.append(f"no material movement for {row.quiet_days} days")
+        account_cycle_days = (
+            int(round(row.account_cycle_days))
+            if row.account_cycle_sample_size >= 3 and row.fiscal_quarter == target_quarter
+            else None
+        )
+        account_cycle_gap_days = (
+            int(round(row.account_cycle_gap_days))
+            if row.account_cycle_mismatch else 0
+        )
+        account_cycle_context = None
+        if account_cycle_days is not None:
+            account_cycle_context = (
+                f"{row.account_cycle_sample_size} prior closed deals at this account had a "
+                f"median {account_cycle_days}-day cycle. This deal's planned close implies "
+                f"{int(row.planned_cycle_days)} total days"
+                + (f", {account_cycle_gap_days} days shorter than that median."
+                   if row.account_cycle_mismatch else ".")
+            )
         rows.append({
             "key": str(row.opportunity_code), "deal": str(row.opportunity_name),
             "account": str(row.account_name), "owner": str(row.owner), "stage": str(row.stage),
@@ -301,6 +347,12 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             "closureProbability": pwin, "mainDriver": driver,
             "closeDate": row.close_date.date().isoformat() if not pd.isna(row.close_date) else None,
             "silenceDays": row.quiet_days if not pd.isna(row.quiet_days) else None,
+            "accountCycleDays": account_cycle_days,
+            "accountCycleSampleSize": int(row.account_cycle_sample_size),
+            "plannedCycleDays": int(row.planned_cycle_days) if account_cycle_days is not None else None,
+            "accountCycleGapDays": account_cycle_gap_days,
+            "accountCycleMismatch": bool(row.account_cycle_mismatch),
+            "accountCycleContext": account_cycle_context,
             "isStalled": bool(row.is_stalled),
             "closeDateSlips": row.close_date_slips or 0,
             "slipDays": row.slip_days or 0,

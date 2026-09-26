@@ -67,11 +67,8 @@ function Brief({ data, modalOpen, closeModal }: {
   data: ExecutivePayload; modalOpen: boolean; closeModal: () => void;
 }) {
   const { setPage, openAction } = useApp();
-  const [selectedInsightKey, setSelectedInsightKey] = useState<string | null>(
-    data.weeklyInsights[0]?.key ?? null,
-  );
-  const selectedInsight = data.weeklyInsights.find(item => item.key === selectedInsightKey)
-    ?? data.weeklyInsights[0];
+  const [selectedInsightKey, setSelectedInsightKey] = useState<string | null>(null);
+  const selectedInsight = data.weeklyInsights.find(item => item.key === selectedInsightKey);
   const selectedAction = selectedInsight?.actionKey
     ? data.actions.find(action => action.key === selectedInsight.actionKey
       && action.theme === selectedInsight.theme)
@@ -94,16 +91,15 @@ function Brief({ data, modalOpen, closeModal }: {
     </section>}
     <section className="exec-section" aria-labelledby="weekly-focus-title">
       <div className="exec-section__head"><div><h2 id="weekly-focus-title">Decisions this week</h2></div></div>
-      <div className="exec-weekly-layout">
-        <ol className="exec-weekly-list" aria-label="Weekly decisions">
-          {data.weeklyInsights.map(insight => <li key={insight.key}>
-            <button type="button" className={`exec-weekly-choice exec-weekly-choice--${insight.theme}${selectedInsight?.key === insight.key ? " is-selected" : ""}`} aria-pressed={selectedInsight?.key === insight.key} onClick={() => setSelectedInsightKey(insight.key)}>
-              <span className="exec-weekly-insight__rank">{insight.rank}</span>
-              <span className="exec-weekly-choice__copy"><span className="exec-weekly-choice__theme">{THEME_LABEL[insight.theme]}</span><strong>{insight.title}</strong><span>{insight.conclusion}</span></span>
-              <span className="exec-weekly-choice__arrow" aria-hidden="true">›</span>
-            </button>
-          </li>)}
-        </ol>
+      <div className={`exec-weekly-layout${selectedInsight ? " exec-weekly-layout--selected" : ""}`}>
+        <div className="exec-weekly-cards" role="group" aria-label="Weekly decisions">
+          {data.weeklyInsights.map(insight => <button key={insight.key} type="button" className={`exec-weekly-card exec-weekly-card--${insight.theme}${selectedInsight?.key === insight.key ? " is-selected" : ""}`} aria-expanded={selectedInsight?.key === insight.key} onClick={() => setSelectedInsightKey(current => current === insight.key ? null : insight.key)}>
+            <span className="exec-weekly-card__top"><span className="exec-weekly-card__theme">{THEME_LABEL[insight.theme]}</span><span className="exec-weekly-card__rank">{insight.rank}</span></span>
+            <strong>{insight.title}</strong>
+            <span className="exec-weekly-card__conclusion">{insight.conclusion}</span>
+            <span className="exec-weekly-card__prompt">{selectedInsight?.key === insight.key ? "Hide details" : "View details"}</span>
+          </button>)}
+        </div>
         {selectedInsight && <aside className={`exec-weekly-detail exec-weekly-detail--${selectedInsight.theme}`} aria-labelledby="weekly-detail-title">
           <div className="exec-weekly-detail__head"><span>{THEME_LABEL[selectedInsight.theme]} · Decision {selectedInsight.rank}</span><h3 id="weekly-detail-title">{selectedInsight.title}</h3></div>
           <p className="exec-weekly-detail__conclusion">{selectedInsight.conclusion}</p>
@@ -199,7 +195,7 @@ function ClosureRisk({ data }: { data: ExecutivePayload }) {
   return <>
     <section className="exec-revenue-overview" aria-labelledby="closure-revenue-title">
       <div className="exec-revenue-overview__head"><div><p className="exec-eyebrow">Declared against defensible</p><h2 id="closure-revenue-title">Revenue confidence by forecast category</h2></div>
-        <details className="exec-info"><summary aria-label="How defensible revenue is calculated">i</summary><div><b>How this is calculated</b><p>Declared includes every open deal in the forecast category. Defensible keeps Commit deals at or above 35% model closure probability and Best Case deals at or above 25%. These are screening thresholds for review, not a forecast guarantee. {data.closureModel.text}</p></div></details>
+        <details className="exec-info"><summary aria-label="How defensible revenue is calculated">i</summary><div><b>How this is calculated</b><p>Declared includes every open deal in the forecast category. Defensible keeps Commit deals at or above 35% model closure probability and Best Case deals at or above 25%. These are screening thresholds for review, not a forecast guarantee. Account cycle context compares the planned total cycle with at least three prior closed deals at the same account; it flags a mismatch only when the planned cycle is at least 30 days and 25% shorter than the account median. This context does not change model probability. {data.closureModel.text}</p></div></details>
       </div>
       <div className="exec-revenue-series">{data.closureOverview.series.map(series => {
         const retained = series.retainedShare == null ? 0 : Math.max(0, Math.min(100, series.retainedShare * 100));
@@ -221,7 +217,7 @@ function ClosureRisk({ data }: { data: ExecutivePayload }) {
       </div>
     </section>
     <section className="exec-section"><div className="exec-section__head"><div><p className="exec-eyebrow">Exceptions</p><h2>Commit first, then Best Case</h2><p>Every scenario keeps its evidence and action together.</p></div><div className="exec-controls"><label>Risk<select value={band} onChange={e => setBand(e.target.value)}><option>All</option><option>Critical</option><option>High</option><option>Watch</option><option>Low</option></select></label><label>Forecast<select value={forecast} onChange={e => setForecast(e.target.value)}><option>All</option>{options("forecastCategory").map(v => <option key={v}>{v}</option>)}</select></label><label>Stage<select value={stage} onChange={e => setStage(e.target.value)}><option>All</option>{options("stage").map(v => <option key={v}>{v}</option>)}</select></label><label>Owner<select value={owner} onChange={e => setOwner(e.target.value)}><option>All</option>{options("owner").map(v => <option key={v}>{v}</option>)}</select></label></div></div>
-      <div className="exec-list">{rows.map(d => { const action = data.actions.find(item => item.key === `closure:${d.key}`); return <article className="exec-row exec-row--with-action" key={d.key}><span className={`exec-score exec-score--${d.riskBand.toLowerCase()}`}>{d.riskScore}</span><div className="exec-row__main"><h3>{d.deal}</h3><p>{d.account} · {d.mainDriver}</p><strong>{d.owner} · closes {d.closeDate ?? "date unavailable"}</strong></div><dl className="exec-row__facts"><div><dt>Forecast</dt><dd>{d.forecastCategory}</dd></div><div><dt>Risk</dt><dd>{d.riskBand}</dd></div><div><dt>Closure probability</dt><dd>{d.closureProbability == null ? "—" : `${Math.round(d.closureProbability * 100)}%`}</dd></div><div><dt>Deterioration</dt><dd>{d.deterioration}</dd></div><div><dt>Silence</dt><dd>{d.silenceDays == null ? "—" : `${d.silenceDays} days`}</dd></div><div><dt>ACV Revenue</dt><dd>{d.formattedRevenue}</dd></div></dl><div className="exec-row__action"><span>The action</span><strong>{action?.nextStep ?? "Validate the evidence and assign an owner."}</strong>{action && <button type="button" className="exec-link" onClick={() => openAction(action.key)}>Open action</button>}</div></article>; })}</div>
+      <div className="exec-list">{rows.map(d => { const action = data.actions.find(item => item.key === `closure:${d.key}`); return <article className="exec-row exec-row--with-action" key={d.key}><span className={`exec-score exec-score--${d.riskBand.toLowerCase()}`}>{d.riskScore}</span><div className="exec-row__main"><h3>{d.deal}</h3><p>{d.account} · {d.mainDriver}</p><strong>{d.owner} · closes {d.closeDate ?? "date unavailable"}</strong></div><dl className="exec-row__facts"><div><dt>Forecast</dt><dd>{d.forecastCategory}</dd></div><div><dt>Risk</dt><dd>{d.riskBand}</dd></div><div><dt>Closure probability</dt><dd>{d.closureProbability == null ? "—" : `${Math.round(d.closureProbability * 100)}%`}</dd></div><div><dt>Deterioration</dt><dd>{d.deterioration}</dd></div><div><dt>Silence</dt><dd>{d.silenceDays == null ? "—" : `${d.silenceDays} days`}</dd></div><div><dt>ACV Revenue</dt><dd>{d.formattedRevenue}</dd></div>{d.accountCycleContext && <div className={`exec-account-cycle${d.accountCycleMismatch ? " exec-account-cycle--warn" : ""}`}><dt>Account decision cycle</dt><dd>{d.accountCycleContext}</dd></div>}</dl><div className="exec-row__action"><span>The action</span><strong>{action?.nextStep ?? "Validate the evidence and assign an owner."}</strong>{action && <button type="button" className="exec-link" onClick={() => openAction(action.key)}>Open action</button>}</div></article>; })}</div>
       {!rows.length && <p className="exec-empty">No commitments match these local filters.</p>}
     </section></>;
 }

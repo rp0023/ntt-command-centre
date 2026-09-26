@@ -215,6 +215,17 @@ class AuthFlowTests(unittest.TestCase):
         self.assertTrue(all(row["deterioration"] for row in closure_rows))
         self.assertEqual([row["forecastCategory"] for row in closure_rows[:2]],
                          ["Commit", "Best Case"])
+        for row in closure_rows:
+            if row["accountCycleContext"] is not None:
+                self.assertGreaterEqual(row["accountCycleSampleSize"], 3)
+                self.assertIsNotNone(row["accountCycleDays"])
+                self.assertIsNotNone(row["plannedCycleDays"])
+                if row["accountCycleMismatch"]:
+                    self.assertGreaterEqual(row["accountCycleGapDays"], 30)
+                    self.assertGreaterEqual(
+                        row["accountCycleGapDays"], row["accountCycleDays"] * .25
+                    )
+                    self.assertIn("shorter than that median", row["accountCycleContext"])
         closure_actions = payloads["closure-risk"]["executive"]["actions"]
         self.assertEqual(len(closure_actions), len(closure_rows))
         self.assertEqual({a["key"] for a in closure_actions},
