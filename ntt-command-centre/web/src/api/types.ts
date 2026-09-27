@@ -13,7 +13,7 @@ export type PersonaKey = "ae" | "manager" | "executive";
 export type Lens =
   | "my-day" | "my-deals" | "my-accounts" | "my-record"
   | "pod-pulse" | "rep-benchmark" | "process" | "calibration" | "pod-whitespace"
-  | "tldr" | "opportunities" | "anomalies" | "closure-risk" | "action-center";
+  | "tldr" | "opportunities" | "low-probability" | "slippage-risk" | "stagnated-deals" | "account-anomalies" | "action-center";
 
 export type DimKey =
   | "stage" | "forecast" | "lob" | "portfolio" | "industry"
@@ -208,6 +208,7 @@ export interface ViewPayload {
   extras: Record<string, unknown>;
   measures: Record<string, unknown>;
   executive?: ExecutivePayload;
+  pageRevenueSummary?: { value: number | null; formatted: string; label: string } | null;
 }
 
 export type ExecutiveTheme = "opportunities" | "anomalies" | "closure";
@@ -222,12 +223,14 @@ export interface ExecutiveMessage {
 export interface ExecutivePlay {
   key: string; offering: string; customerCount: number; ownerCount: number;
   confidence: string; pilotAccount: string; pilotOwner: string;
+  peerRevenueBenchmark: number; formattedPeerRevenueBenchmark: string;
   nextStep: string; reason: string;
 }
 export interface ExecutiveFinding {
-  key: string; severity: Urgency; entityType: string; entity: string;
+  key: string; severity: Urgency; entityType: string; entityId: string; entity: string;
   category: string; evidence: string; owner: string;
   question: string; nextStep: string;
+  revenue: number; formattedRevenue: string;
 }
 export interface ExecutiveStalledDeal {
   key: string; deal: string; account: string; owner: string; stage: string;
@@ -237,16 +240,19 @@ export interface ExecutiveStalledDeal {
   actionKey: string | null;
 }
 export interface OpportunityOverview {
-  recommendations: number; accounts: number; strongRecommendations: number;
+  recommendations: number; repeatableRecommendations: number;
+  singleAccountRecommendations: number; accounts: number; strongRecommendations: number;
   veryHighRecommendations: number; repeatablePlays: number;
   topPlay: string; topPlayAccounts: number;
   peerWonRevenueMedian: number | null; formattedPeerWonRevenueMedian: string;
+  peerRevenueBenchmark: number; formattedPeerRevenueBenchmark: string;
 }
 export interface AnomalyOverview {
   stalledDeals: number; stalledAccounts: number; stalledPastDue: number;
   stalledRevenue: number; formattedStalledRevenue: string;
   longestSilenceDays: number; accountFindings: number;
   accountsAffected: number; criticalAccountFindings: number;
+  accountRevenue: number; formattedAccountRevenue: string;
   stagnationBands: { label: string; deals: number; revenue: number; formattedRevenue: string; share: number }[];
   forecastCalls: { call: string; deals: number; revenue: number; formattedRevenue: string }[];
 }
@@ -262,6 +268,15 @@ export interface ClosureException {
   deterioration: string;
   revenue: number; formattedRevenue: string;
 }
+export interface ExecutiveSlippageDeal {
+  key: string; account: string; deal: string; line: string;
+  owner: string; accountOwner: string;
+  revenue: number; formattedRevenue: string;
+  forecastCategory: string; riskBand: RiskBand;
+  evidence: string | null; nextStep: string | null; priority: Urgency | null;
+  closeDateSlips: number; slipDays: number;
+  pastDueDays: number; closeDate: string | null;
+}
 export interface ClosureRevenueSeries {
   forecast: "Commit" | "Best Case"; threshold: number;
   declaredRevenue: number; formattedDeclaredRevenue: string; declaredDeals: number;
@@ -271,6 +286,10 @@ export interface ClosureRevenueSeries {
 }
 export interface ClosureOverview {
   series: ClosureRevenueSeries[];
+  lowProbabilityRevenue: number; formattedLowProbabilityRevenue: string;
+  lowProbabilityDeals: number;
+  slippageRevenue: number; formattedSlippageRevenue: string;
+  slipEvents: number; totalSlipDays: number; slippedPastDueDeals: number;
   stats: {
     openDeals: number; highRiskDeals: number; pastDueDeals: number;
     stalledDeals: number; slippedDeals: number;
@@ -283,7 +302,16 @@ export interface ExecutiveAction {
   key: string; theme: ExecutiveTheme; priority: Urgency; owner: string;
   dueDate: string; headline: string; description: string; nextStep: string;
   revenueImpact?: number; formattedRevenueImpact?: string;
+  revenueLabel?: string;
+  revenueBasis?: "deal_acv" | "account_book_acv" | "peer_benchmark";
+  revenueEntityKey?: string; sourcePage?: Lens;
   options: ExecutiveActionOption[];
+}
+export interface ExecutiveActionOverview {
+  totalActions: number; uniqueDealActions: number;
+  dealAcvRevenue: number; formattedDealAcvRevenue: string;
+  accountActions: number; accountBookRevenue: number; formattedAccountBookRevenue: string;
+  growthActions: number; growthBenchmark: number; formattedGrowthBenchmark: string;
 }
 export interface ExecutiveWeeklyBanner {
   tone: Tone; headline: string; subline: string;
@@ -303,9 +331,11 @@ export interface ExecutivePayload {
   anomalyOverview: AnomalyOverview;
   stalledDeals: ExecutiveStalledDeal[];
   closureExceptions: ClosureException[];
+  slippageDeals: ExecutiveSlippageDeal[];
   closureModel: { available: boolean; testAuc?: number | null; text: string };
   closureOverview: ClosureOverview;
   actions: ExecutiveAction[];
+  actionOverview: ExecutiveActionOverview;
   weeklyBanner: ExecutiveWeeklyBanner | null;
   weeklyInsights: ExecutiveWeeklyInsight[];
 }

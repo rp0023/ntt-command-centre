@@ -14,7 +14,7 @@
  * line, because the question is what tells you whether this is the page you
  * want — "Calibration" alone does not.
  */
-import type { Lens, PersonaKey } from "../api/types";
+import type { ExecutivePayload, Lens, PersonaKey } from "../api/types";
 import { Icon, SIZE, type IconName } from "./icons";
 
 export interface NavItem {
@@ -43,10 +43,10 @@ const GROUPS: Record<PersonaKey, NavGroup[]> = {
   ],
   executive: [
     { heading: "Weekly overview", pages: ["tldr"] },
-    { heading: "Deal Closure", pages: ["closure-risk"], emphasis: "closure" },
-    { heading: "Anomaly Detection", pages: ["anomalies"], emphasis: "anomaly" },
-    { heading: "Cross-sell / Upsell", pages: ["opportunities"], emphasis: "cross-sell" },
-    { heading: "Decide", pages: ["action-center"] },
+    { heading: "Deal closure likelihood", pages: ["low-probability", "slippage-risk"], emphasis: "closure" },
+    { heading: "Anomaly Detection", pages: ["stagnated-deals", "account-anomalies"], emphasis: "anomaly" },
+    { heading: "Cross-sell and upsell", pages: ["opportunities"], emphasis: "cross-sell" },
+    { heading: "Decision workflow", pages: ["action-center"] },
   ],
 };
 
@@ -68,8 +68,10 @@ const ICON: Partial<Record<Lens, IconName>> = {
   "pod-whitespace": "grow",
   tldr: "brief",
   opportunities: "grow",
-  anomalies: "risks",
-  "closure-risk": "deals",
+  "low-probability": "deals",
+  "slippage-risk": "process",
+  "stagnated-deals": "risks",
+  "account-anomalies": "accounts",
   "action-center": "decisions",
 };
 
@@ -78,12 +80,14 @@ export function SidebarNav({
   pages,
   current,
   onNavigate,
+  executive,
   collapsed = false,
 }: {
   persona: PersonaKey;
   pages: NavItem[];
   current: Lens;
   onNavigate: (page: Lens) => void;
+  executive?: ExecutivePayload;
   collapsed?: boolean;
 }) {
   const byKey = new Map(pages.map((p) => [p.key, p]));
@@ -98,9 +102,37 @@ export function SidebarNav({
       ? [{ heading: "More", emphasis: undefined, items: pages.filter((p) => !placed.has(p.key)) }]
       : []),
   ] as { heading: string; emphasis?: NavGroup["emphasis"]; items: NavItem[] }[];
+  const pageNumber = new Map(pages.map((page, index) => [page.key, index + 1]));
+  const executiveLabels: Partial<Record<Lens, string>> = {
+    tldr: "This week",
+    opportunities: "Growth plays",
+    "action-center": "Action center",
+  };
+  const executiveLabel = (page: NavItem) => executiveLabels[page.key] ?? page.label;
+  const executiveSummary = (page: NavItem) => {
+    if (!executive) return page.question;
+    switch (page.key) {
+      case "tldr":
+        return executive.weeklyInsights.length
+          ? `${executive.weeklyInsights.length} insights, ${executive.actions.length} actions`
+          : "Weekly insights and actions";
+      case "low-probability":
+        return `${executive.closureOverview.formattedLowProbabilityRevenue} below 50% probability`;
+      case "slippage-risk":
+        return `${executive.closureOverview.formattedSlippageRevenue} with moved close dates`;
+      case "stagnated-deals":
+        return `${executive.anomalyOverview.formattedStalledRevenue} has not moved`;
+      case "account-anomalies":
+        return `${executive.anomalyOverview.formattedAccountRevenue} under investigation`;
+      case "opportunities":
+        return `${executive.opportunityOverview.formattedPeerRevenueBenchmark} peer-based benchmark`;
+      default:
+        return page.question;
+    }
+  };
 
   return (
-    <nav className={`side${collapsed ? " side--collapsed" : ""}`} aria-label="Pages">
+    <nav className={`side side--${persona}${collapsed ? " side--collapsed" : ""}`} aria-label="Pages">
       {groups.map((g) => (
         <div className={`side__group${g.emphasis ? ` side__group--${g.emphasis}` : ""}`} key={g.heading}>
           <p className="side__heading">{g.heading}</p>
@@ -117,11 +149,13 @@ export function SidebarNav({
                     onClick={() => onNavigate(p.key)}
                   >
                     <span className="side__glyph" aria-hidden="true">
-                      <Icon name={ICON[p.key] ?? "chevron"} size={SIZE.nav} />
+                      {persona === "executive"
+                        ? String(pageNumber.get(p.key) ?? 0).padStart(2, "0")
+                        : <Icon name={ICON[p.key] ?? "chevron"} size={SIZE.nav} />}
                     </span>
                     <span className="side__text">
-                      <span className="side__label">{p.label}</span>
-                      <span className="side__question">{p.question}</span>
+                      <span className="side__label">{persona === "executive" ? executiveLabel(p) : p.label}</span>
+                      <span className="side__question">{persona === "executive" ? executiveSummary(p) : p.question}</span>
                     </span>
                   </button>
                 </li>

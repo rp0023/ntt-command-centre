@@ -13,6 +13,16 @@ export function money(v: number, dp = 2): string {
   return `${sign}$${a.toFixed(0)}`;
 }
 
+/** Full USD formatting for deal-level values where the exact amount matters. */
+export function moneyExact(v: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(v);
+}
+
 /** Axis ticks want one decimal and no noise. */
 export const moneyShort = (v: number) => money(v, v >= 1e6 || v <= -1e6 ? 1 : 0);
 
@@ -64,4 +74,10 @@ export function monthLabel(iso: string): string {
 export function longDate(iso: string): string {
   const d = new Date(iso);
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+export function shortDate(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(`${iso}T00:00:00Z`);
+  return `${String(d.getUTCDate()).padStart(2, "0")} ${MONTHS[d.getUTCMonth()]}`;
 }

@@ -266,6 +266,10 @@ def themes(fs: FilterState, principal: Principal, min_accounts: int = 2) -> list
                 "reason": best["reasons"][0]["text"] if best["reasons"] else "",
             },
             "corroborated": sum(1 for r in rows if r["corroborated"]),
+            # Sum the source's peer-won revenue reference for each recommended
+            # account/offering in this play. This is a benchmark for sizing the
+            # conversation, never pipeline or forecast revenue.
+            "peerRevenueBenchmark": float(sum(r["peerRevenue"] for r in rows)),
             "caveat": CAVEAT,
             "framing": "opportunity",
         })
@@ -306,6 +310,7 @@ def summary(fs: FilterState, principal: Principal) -> dict:
     th = themes(fs, principal)
     strong = [r for r in recs if r["confidenceRank"] >= 2]
     peer_revenues = [r["peerRevenue"] for r in recs if r["peerRevenue"] > 0]
+    repeatable_recommendations = sum(int(t["accounts"]) for t in th)
     return {
         "recommendations": len(recs),
         "accounts": len({r["accountCode"] for r in recs}),
@@ -315,6 +320,10 @@ def summary(fs: FilterState, principal: Principal) -> dict:
         "themes": len(th),
         "estimatedGp": float(sum(r["peerGp"] for r in recs)),
         "peerWonRevenueMedian": float(pd.Series(peer_revenues).median()) if peer_revenues else None,
+        "repeatableRecommendations": repeatable_recommendations,
+        "singleAccountRecommendations": len(recs) - repeatable_recommendations,
+        "peerRevenueBenchmark": float(sum(t["peerRevenueBenchmark"] for t in th)),
+        "allPeerRevenueBenchmark": float(sum(peer_revenues)),
         "topTheme": th[0]["offering"] if th else "",
         "topThemeAccounts": th[0]["accounts"] if th else 0,
         "topRecommendation": recs[0] if recs else None,

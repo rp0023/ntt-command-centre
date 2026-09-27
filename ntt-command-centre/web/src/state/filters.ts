@@ -144,7 +144,7 @@ export function fromQuery(search: string): Partial<AppState> {
   const p = new URLSearchParams(search);
   const requestedPage = p.get("page");
   const legacy: Record<string, Lens> = {
-    growth: "opportunities", risks: "anomalies", actions: "action-center",
+    growth: "opportunities", risks: "account-anomalies", actions: "action-center",
     performance: "tldr", structure: "tldr",
   };
   const page = requestedPage ? (legacy[requestedPage] ?? requestedPage) : null;

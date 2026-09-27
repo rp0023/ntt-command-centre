@@ -59,14 +59,16 @@ PAGES: dict[str, tuple[str, str, str]] = {
     "pod-whitespace": ("manager", "Grow accounts", "What should the team sell next?"),
     # Executive
     "tldr": ("executive", "The brief", "Weekly brief"),
-    "closure-risk": ("executive", "What closes it?", "Pipeline and conversion"),
-    "anomalies": ("executive", "Process or people?", "What is wrong"),
+    "low-probability": ("executive", "Low probability to close", "Which revenue needs a stronger path to close?"),
+    "slippage-risk": ("executive", "Slippage risk", "Which close dates need to be reset?"),
+    "stagnated-deals": ("executive", "Stagnated deals", "Which deals have stopped moving?"),
+    "account-anomalies": ("executive", "Account anomalies", "Which account signals warrant investigation?"),
     "opportunities": ("executive", "What's the solution?", "Where to grow"),
     "action-center": ("executive", "What to commit NOW?", "Action Center"),
 }
 
 EXECUTIVE_LEGACY_PAGES = {
-    "growth": "opportunities", "risks": "anomalies", "actions": "action-center",
+    "growth": "opportunities", "risks": "account-anomalies", "actions": "action-center",
     "performance": "tldr", "structure": "tldr",
 }
 

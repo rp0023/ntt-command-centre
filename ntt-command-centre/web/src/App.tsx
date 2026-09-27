@@ -78,7 +78,7 @@ export default function App() {
   }
 
   return (
-    <div className={`app${railOpen ? "" : " app--rail-closed"}`}>
+    <div className={`app app--${state.persona}${railOpen ? "" : " app--rail-closed"}`}>
       <Header meta={meta.data} onToggleRail={() => setRailOpen((v) => !v)} />
 
       <div className="shell">
@@ -89,6 +89,7 @@ export default function App() {
               pages={pages}
               current={state.page}
               onNavigate={(p) => setPage(p)}
+              executive={view.data?.executive}
             />
           )}
         </aside>

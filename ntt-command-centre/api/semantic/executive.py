@@ -48,7 +48,7 @@ def _options(kind: str) -> list[dict]:
 
 def _opportunities(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], dict]:
     summary = XS.summary(fs, principal)
-    themes = XS.themes(fs, principal)[:5]
+    themes = XS.themes(fs, principal)
     message = {
         "key": "opportunities",
         "title": "Opportunities",
@@ -69,11 +69,15 @@ def _opportunities(fs: FilterState, principal: Principal) -> tuple[dict, list[di
         "confidence": t["strongest"]["confidence"],
         "pilotAccount": t["strongest"]["accountName"],
         "pilotOwner": t["strongest"]["owner"],
+        "peerRevenueBenchmark": float(t["peerRevenueBenchmark"]),
+        "formattedPeerRevenueBenchmark": money(float(t["peerRevenueBenchmark"])),
         "nextStep": f"Ask {t['strongest']['owner']} to validate {t['strongest']['accountName']} as the pilot.",
         "reason": t["strongest"]["reason"],
     } for t in themes]
     overview = {
         "recommendations": int(summary["recommendations"]),
+        "repeatableRecommendations": int(summary["repeatableRecommendations"]),
+        "singleAccountRecommendations": int(summary["singleAccountRecommendations"]),
         "accounts": int(summary["accounts"]),
         "strongRecommendations": int(summary["strong"]),
         "veryHighRecommendations": int(summary["veryHigh"]),
@@ -85,6 +89,8 @@ def _opportunities(fs: FilterState, principal: Principal) -> tuple[dict, list[di
             money(summary["peerWonRevenueMedian"])
             if summary["peerWonRevenueMedian"] is not None else "—"
         ),
+        "peerRevenueBenchmark": float(summary["peerRevenueBenchmark"]),
+        "formattedPeerRevenueBenchmark": money(float(summary["peerRevenueBenchmark"])),
     }
     return message, plays, overview
 
@@ -119,6 +125,9 @@ def _anomalies(fs: FilterState, principal: Principal) -> tuple[dict, list[dict],
     stalled_past_due = int(stalled["is_past_due"].sum()) if len(stalled) else 0
     longest_silence = int(stalled["quiet_days"].max()) if len(stalled) else 0
     stalled_revenue = float(stalled["acv_revenue"].sum()) if len(stalled) else 0.0
+    account_codes = set(frame["entity_id"].astype(str)) if not frame.empty else set()
+    account_revenue = float(risk[risk["account_code"].astype(str).isin(account_codes)]["acv_revenue"].sum()) if account_codes else 0.0
+    account_revenue_by_code = risk.groupby(risk["account_code"].astype(str))["acv_revenue"].sum()
     stagnation_bands = []
     for label, minimum, maximum in (
         ("60–90 days", 60, 90),
@@ -158,9 +167,11 @@ def _anomalies(fs: FilterState, principal: Principal) -> tuple[dict, list[dict],
         "page": "anomalies",
     }
     findings = []
-    for row in frame.head(20).itertuples(index=False):
+    for row in frame.itertuples(index=False):
+        finding_revenue = float(account_revenue_by_code.get(str(row.entity_id), 0.0))
         findings.append({
             "key": str(row.anomaly_id), "severity": str(row.priority),
+            "entityId": str(row.entity_id),
             "entityType": str(row.entity_type), "entity": str(row.entity_label),
             "category": ("Pipeline health" if str(row.category) == "Pipeline Coverage"
                          else str(row.category)),
@@ -168,12 +179,12 @@ def _anomalies(fs: FilterState, principal: Principal) -> tuple[dict, list[dict],
             "owner": _safe_text(row.owner, "Executive sponsor") or "Executive sponsor",
             "question": _safe_text(row.category_question, "What changed, and does it require intervention?"),
             "nextStep": _safe_text(row.recommended_action, "Assign an owner to validate the finding."),
+            "revenue": finding_revenue, "formattedRevenue": money(finding_revenue),
         })
     stalled_rows = []
-    for row in stalled.head(5).itertuples(index=False):
+    for row in stalled.itertuples(index=False):
         source = (source_stalls.loc[row.opportunity_code]
                   if row.opportunity_code in source_stalls.index else None)
-        source_key = str(source["anomaly_id"]) if source is not None else None
         source_evidence = (_safe_text(source["evidence"], "") if source is not None else "")
         source_action = (_safe_text(source["recommended_action"], "")
                          if source is not None else "")
@@ -182,6 +193,12 @@ def _anomalies(fs: FilterState, principal: Principal) -> tuple[dict, list[dict],
             getattr(row, "days_in_stage", getattr(row, "days_in_current_stage", 0)),
             errors="coerce",
         ) or 0)
+        fallback_evidence = (
+            f"No field changed in {int(row.quiet_days)} days; the deal remains open at {row.stage}."
+        )
+        fallback_action = "Confirm the real status, update the deal, or close it out."
+        fallback_priority = ("High" if str(row.risk_band) in ("Critical", "High")
+                             else "Medium")
         stalled_rows.append({
             "key": str(row.opportunity_code),
             "deal": str(row.opportunity_name),
@@ -195,10 +212,10 @@ def _anomalies(fs: FilterState, principal: Principal) -> tuple[dict, list[dict],
             "dealValueLabel": money(deal_value),
             "call": str(row.forecast_category),
             "closeDate": row.close_date.date().isoformat() if not pd.isna(row.close_date) else None,
-            "evidence": source_evidence or None,
-            "nextStep": source_action or None,
-            "priority": str(source["priority"]) if source is not None else None,
-            "actionKey": f"stalled:{source_key}" if source_key and source_action else None,
+            "evidence": source_evidence or fallback_evidence,
+            "nextStep": source_action or fallback_action,
+            "priority": str(source["priority"]) if source is not None else fallback_priority,
+            "actionKey": f"stalled:{row.opportunity_code}",
         })
     overview = {
         "stalledDeals": int(len(stalled)),
@@ -212,11 +229,13 @@ def _anomalies(fs: FilterState, principal: Principal) -> tuple[dict, list[dict],
         "accountFindings": int(len(frame)),
         "accountsAffected": entities,
         "criticalAccountFindings": critical,
+        "accountRevenue": account_revenue,
+        "formattedAccountRevenue": money(account_revenue),
     }
     return message, findings, overview, stalled_rows
 
 
-def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], dict, dict]:
+def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], dict, dict, list[dict]]:
     risk = P.risk_table()
     codes = set(slice_frame(fs, principal)["opportunity_code"])
     risk = risk[risk["opportunity_code"].isin(codes)].copy()
@@ -309,7 +328,7 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
         factors = [f for f in row.risk_factors if f.get("key") != "thin_margin"]
         driver = ds_driver or (factors[0]["detail"] if factors else "No single observable driver dominates.")
         deterioration = []
-        if row.close_date_slips or 0 > 0:
+        if (row.close_date_slips or 0) > 0:
             deterioration.append(
                 f"close date moved {row.close_date_slips}x ({row.slip_days or 0} days later)"
             )
@@ -357,7 +376,50 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             "closeDateSlips": row.close_date_slips or 0,
             "slipDays": row.slip_days or 0,
             "deterioration": "; ".join(deterioration) if deterioration else "No deterioration signal detected",
-            "revenue": row.acv_revenue, "formattedRevenue": row.acv_revenue,
+            "revenue": float(row.acv_revenue), "formattedRevenue": money(float(row.acv_revenue)),
+        })
+
+    # Slippage is a movement-log use case, not a model-risk use case. Include
+    # every open deal whose close date moved later, and order by the observable
+    # movement first: number of re-dates, cumulative days moved, overdue days,
+    # then ACV. This list intentionally does not inherit the curated Brief cap.
+    slipped = risk[risk["close_date_slips"] > 0].copy()
+    slipped = slipped.sort_values(
+        ["close_date_slips", "slip_days", "days_past_due", "acv_revenue"],
+        ascending=[False, False, False, False],
+    )
+    source_slips = ANOM.unified()
+    source_slips = source_slips.loc[
+        source_slips["entity_type"].eq("Opportunity")
+        & source_slips["anomaly_type"].eq("close_date_slip")
+    ].drop_duplicates("entity_id").set_index("entity_id")
+    slippage_rows = []
+    for row in slipped.itertuples(index=False):
+        portfolio = str(row.portfolio) if isinstance(row.portfolio, str) else ""
+        lob = str(row.lob) if isinstance(row.lob, str) else ""
+        source = (source_slips.loc[row.opportunity_code]
+                  if row.opportunity_code in source_slips.index else None)
+        evidence = (_safe_text(source["evidence"], "") if source is not None else "")
+        next_step = (_safe_text(source["recommended_action"], "")
+                     if source is not None else "")
+        slippage_rows.append({
+            "key": str(row.opportunity_code),
+            "account": str(row.account_name),
+            "deal": str(row.opportunity_name),
+            "line": portfolio or lob,
+            "owner": str(row.owner),
+            "accountOwner": str(row.account_owner),
+            "revenue": float(row.acv_revenue),
+            "formattedRevenue": money(float(row.acv_revenue)),
+            "forecastCategory": str(row.forecast_category),
+            "riskBand": str(row.risk_band),
+            "evidence": evidence or None,
+            "nextStep": next_step or None,
+            "priority": str(source["priority"]) if source is not None else None,
+            "closeDateSlips": int(row.close_date_slips),
+            "slipDays": int(row.slip_days),
+            "pastDueDays": int(row.days_past_due),
+            "closeDate": row.close_date.date().isoformat() if not pd.isna(row.close_date) else None,
         })
     model = DS.model_card() if DS.available() else DS.unavailable_card()
     disclosure = {
@@ -368,6 +430,9 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
                  "Closure probability is unavailable; prioritize observable deal movement."),
     }
     revenue_series = []
+    # Forecast defensibility is category-specific: Commit carries a higher
+    # evidence bar than Best Case. The page worklist still uses the separate
+    # business definition of low probability (below 50%).
     for forecast, threshold in (("Commit", .35), ("Best Case", .25)):
         declared = risk[risk["forecast_category"] == forecast]
         scored = declared[declared["closure_probability"].notna()]
@@ -402,24 +467,40 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             "stalledDeals": int(risk["is_stalled"].sum()),
             "slippedDeals": int((risk["close_date_slips"] > 0).sum()),
         },
+        "lowProbabilityRevenue": float(risk[risk["closure_probability"] < .5]["acv_revenue"].sum()) if "closure_probability" in risk else 0.0,
+        "formattedLowProbabilityRevenue": money(float(risk[risk["closure_probability"] < .5]["acv_revenue"].sum())) if "closure_probability" in risk else money(0),
+        "lowProbabilityDeals": int((risk["closure_probability"] < .5).sum()) if "closure_probability" in risk else 0,
+        "slippageRevenue": float(risk[risk["close_date_slips"] > 0]["acv_revenue"].sum()),
+        "formattedSlippageRevenue": money(float(risk[risk["close_date_slips"] > 0]["acv_revenue"].sum())),
+        "slipEvents": int(slipped["close_date_slips"].sum()),
+        "totalSlipDays": int(slipped["slip_days"].sum()),
+        "slippedPastDueDeals": int(slipped["is_past_due"].sum()),
     }
-    return message, rows, disclosure, overview
+    return message, rows, disclosure, overview, slippage_rows
 
 
 def _actions(plays: list[dict], findings: list[dict], stalled_deals: list[dict],
-             closures: list[dict]) -> list[dict]:
+             closures: list[dict], slippage_deals: list[dict]) -> list[dict]:
     actions: list[dict] = []
-    for i, play in enumerate(plays[:4]):
+    for i, play in enumerate(plays):
         actions.append({
             "key": f"opportunity:{play['key']}", "theme": "opportunities",
-            "priority": "High" if i == 0 else "Medium", "owner": play["pilotOwner"],
+            "priority": ("High" if play["confidence"] in ("High", "Very High")
+                         else "Medium"), "owner": play["pilotOwner"],
             "dueDate": _date(7 + i * 2), "headline": f"Pilot {play['offering']}",
             "description": play["reason"],
-            "nextStep": play["nextStep"], "options": _options("opportunities"),
+            "nextStep": play["nextStep"],
+            "sourcePage": "opportunities",
+            "revenueImpact": play["peerRevenueBenchmark"],
+            "formattedRevenueImpact": play["formattedPeerRevenueBenchmark"],
+            "revenueLabel": "Peer-based revenue benchmark",
+            "revenueBasis": "peer_benchmark",
+            "revenueEntityKey": play["key"],
+            "options": _options("opportunities"),
         })
     seen: set[str] = set()
     for finding in findings:
-        if finding["entity"] in seen or len([a for a in actions if a["theme"] == "anomalies"]) >= 4:
+        if finding["entity"] in seen:
             continue
         seen.add(finding["entity"])
         actions.append({
@@ -428,20 +509,30 @@ def _actions(plays: list[dict], findings: list[dict], stalled_deals: list[dict],
             "dueDate": _date(2 if finding["severity"] == "Critical" else 5),
             "headline": f"Investigate {finding['entity']}", "nextStep": finding["nextStep"],
             "description": finding["evidence"],
+            "sourcePage": "account-anomalies",
+            "revenueImpact": finding["revenue"],
+            "formattedRevenueImpact": finding["formattedRevenue"],
+            "revenueLabel": "Open ACV Revenue at this account",
+            "revenueBasis": "account_book_acv",
+            "revenueEntityKey": finding["entityId"],
             "options": _options("anomalies"),
         })
     for deal in stalled_deals:
-        if not deal.get("actionKey") or not deal.get("evidence") or not deal.get("nextStep"):
-            continue
         actions.append({
             "key": deal["actionKey"], "theme": "anomalies",
             "priority": deal.get("priority") or "High", "owner": deal["owner"],
             # The supplied DS recommendation explicitly asks for confirmation this week.
             "dueDate": _date(7), "headline": f"Confirm status of {deal['deal']}",
             "description": deal["evidence"], "nextStep": deal["nextStep"],
+            "sourcePage": "stagnated-deals",
+            "revenueImpact": deal["dealValue"],
+            "formattedRevenueImpact": deal["dealValueLabel"],
+            "revenueLabel": "Associated ACV Revenue",
+            "revenueBasis": "deal_acv",
+            "revenueEntityKey": deal["key"],
             "options": _options("anomalies"),
         })
-    for i, deal in enumerate(closures[:10]):
+    for i, deal in enumerate(closures):
         if deal["forecastCategory"] == "Commit":
             next_step = (f"Ask {deal['owner']} for the buying event, decision date, and next meeting; "
                          "move the deal out of Commit if that evidence is absent.")
@@ -461,10 +552,61 @@ def _actions(plays: list[dict], findings: list[dict], stalled_deals: list[dict],
             "headline": f"Review {deal['deal']}",
             "description": f"{deal['mainDriver']} {deal['deterioration']}.",
             "nextStep": next_step,
+            "sourcePage": "low-probability",
             "revenueImpact": deal["revenue"], "formattedRevenueImpact": deal["formattedRevenue"],
+            "revenueLabel": "Associated ACV Revenue",
+            "revenueBasis": "deal_acv", "revenueEntityKey": deal["key"],
+            "options": _options("closure"),
+        })
+    for deal in slippage_deals:
+        priority = (deal.get("priority") or
+                    ("Critical" if deal["riskBand"] == "Critical" else
+                     "High" if deal["riskBand"] == "High" else "Medium"))
+        actions.append({
+            "key": f"slippage:{deal['key']}", "theme": "closure",
+            "priority": priority, "owner": deal["owner"],
+            "dueDate": _date(2 if priority == "Critical" else 4 if priority == "High" else 7),
+            "headline": f"Validate close date for {deal['deal']}",
+            "description": (deal.get("evidence") or
+                            f"The close date moved later {deal['closeDateSlips']} time(s), "
+                            f"adding {deal['slipDays']} days."),
+            "nextStep": (deal.get("nextStep") or
+                         "Confirm the new date is committed rather than the deal drifting."),
+            "sourcePage": "slippage-risk",
+            "revenueImpact": deal["revenue"],
+            "formattedRevenueImpact": deal["formattedRevenue"],
+            "revenueLabel": "Associated ACV Revenue",
+            "revenueBasis": "deal_acv", "revenueEntityKey": deal["key"],
             "options": _options("closure"),
         })
     return sorted(actions, key=lambda a: (PRIORITY_ORDER.get(a["priority"], 9), a["dueDate"]))
+
+
+def _action_overview(actions: list[dict]) -> dict:
+    """Revenue attached to actions, kept separate by non-additive basis."""
+    totals: dict[str, dict[str, float]] = {
+        "deal_acv": {}, "account_book_acv": {}, "peer_benchmark": {},
+    }
+    for action in actions:
+        basis = action.get("revenueBasis")
+        entity = action.get("revenueEntityKey")
+        value = float(action.get("revenueImpact", 0) or 0)
+        if basis in totals and entity:
+            # A deal can require both probability and slippage actions. Count
+            # its ACV once in the headline while retaining both action cards.
+            totals[basis][str(entity)] = value
+    deal_acv = float(sum(totals["deal_acv"].values()))
+    account_book = float(sum(totals["account_book_acv"].values()))
+    peer_benchmark = float(sum(totals["peer_benchmark"].values()))
+    return {
+        "totalActions": int(len(actions)),
+        "uniqueDealActions": int(len(totals["deal_acv"])),
+        "dealAcvRevenue": deal_acv, "formattedDealAcvRevenue": money(deal_acv),
+        "accountActions": int(len(totals["account_book_acv"])),
+        "accountBookRevenue": account_book, "formattedAccountBookRevenue": money(account_book),
+        "growthActions": int(len(totals["peer_benchmark"])),
+        "growthBenchmark": peer_benchmark, "formattedGrowthBenchmark": money(peer_benchmark),
+    }
 
 
 def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
@@ -525,7 +667,7 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
                 "headline": f"{money(hot_revenue)} ACV Revenue at risk",
                 "subline": (f"{count(len(commit_low))} Commit and {count(len(best_case_low))} Best Case "
                             "deals sit below 50% probability."),
-                "page": "closure-risk",
+                "page": "low-probability",
             },
             {
                 "key": "anomalies", "tone": "warn", "label": "Anomaly detection",
@@ -534,12 +676,12 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
                 "subline": (f"{count(anomaly_overview['stalledDeals'])} stagnant deals across "
                             f"{count(anomaly_overview['stalledAccounts'])} accounts; "
                             f"{count(anomaly_overview['stalledPastDue'])} are past due."),
-                "page": "anomalies",
+                "page": "stagnated-deals",
             },
             {
                 "key": "opportunities", "tone": "good", "label": "Cross-sell and upsell",
-                "headline": (f"{opportunity_overview['formattedPeerWonRevenueMedian']} "
-                             "median peer-won revenue"),
+                "headline": (f"{opportunity_overview['formattedPeerRevenueBenchmark']} "
+                             "peer-based revenue benchmark"),
                 "subline": (f"{count(opportunity_overview['recommendations'])} source recommendations "
                             f"across {count(opportunity_overview['accounts'])} accounts; "
                             f"{count(opportunity_overview['repeatablePlays'])} repeatable plays."),
@@ -557,7 +699,7 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
         insights.append({
             "key": key, "rank": rank, "theme": "closure", "title": title,
             "conclusion": conclusion, "evidence": evidence,
-            "nextStep": next_step, "page": "closure-risk", "entity": deal["deal"],
+            "nextStep": next_step, "page": "low-probability" if key == "weekly:forecast-probability" else "slippage-risk", "entity": deal["deal"],
             "actionKey": f"closure:{deal['key']}",
         })
 
@@ -600,7 +742,7 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
             "title": "A deal anomaly needs investigation",
             "conclusion": f"{finding['entity']} carries a {finding['severity'].lower()}-priority {finding['category'].lower()} finding.",
             "evidence": [finding["evidence"], f"Account pattern: {finding['category']}."],
-            "nextStep": finding["nextStep"], "page": "anomalies", "entity": finding["entity"],
+            "nextStep": finding["nextStep"], "page": "account-anomalies", "entity": finding["entity"],
             "actionKey": f"anomaly:{finding['key']}",
         })
     if plays:
@@ -624,8 +766,9 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
 def payload(fs: FilterState, principal: Principal) -> dict:
     opportunity_message, plays, opportunity_overview = _opportunities(fs, principal)
     anomaly_message, findings, anomaly_overview, stalled_deals = _anomalies(fs, principal)
-    closure_message, closures, disclosure, closure_overview = _closure(fs, principal)
-    actions = _actions(plays, findings, stalled_deals, closures)
+    closure_message, closures, disclosure, closure_overview, slippage_deals = _closure(fs, principal)
+    actions = _actions(plays, findings, stalled_deals, closures, slippage_deals)
+    action_overview = _action_overview(actions)
     weekly_banner, weekly_insights = _weekly_focus(
         fs, principal, findings, closures, plays, opportunity_overview, anomaly_overview,
     )
@@ -636,7 +779,8 @@ def payload(fs: FilterState, principal: Principal) -> dict:
         "stalledDeals": stalled_deals,
         "closureExceptions": closures, "closureModel": disclosure,
         "closureOverview": closure_overview,
-        "actions": actions, "weeklyBanner": weekly_banner,
+        "slippageDeals": slippage_deals,
+        "actions": actions, "actionOverview": action_overview, "weeklyBanner": weekly_banner,
         "weeklyInsights": weekly_insights,
     }
 
@@ -653,28 +797,48 @@ def view(page: str, fs: FilterState, principal: Principal, label: str, question:
         focused["anomalyFindings"] = []
         focused["stalledDeals"] = []
         focused["closureExceptions"] = []
+        focused["slippageDeals"] = []
     elif page == "opportunities":
         focused["actions"] = [a for a in focused["actions"] if a["theme"] == "opportunities"]
         focused["anomalyFindings"] = []
         focused["stalledDeals"] = []
         focused["closureExceptions"] = []
-    elif page == "anomalies":
+        focused["slippageDeals"] = []
+    elif page in ("stagnated-deals", "account-anomalies"):
         focused["actions"] = [a for a in focused["actions"] if a["theme"] == "anomalies"]
         focused["opportunityPlays"] = []
         focused["closureExceptions"] = []
-    elif page == "closure-risk":
+        focused["slippageDeals"] = []
+        if page == "stagnated-deals":
+            focused["anomalyFindings"] = []
+        else:
+            focused["stalledDeals"] = []
+    elif page in ("low-probability", "slippage-risk"):
         focused["actions"] = [a for a in focused["actions"] if a["theme"] == "closure"]
         focused["opportunityPlays"] = []
         focused["anomalyFindings"] = []
         focused["stalledDeals"] = []
+        if page == "low-probability":
+            focused["slippageDeals"] = []
+        else:
+            focused["closureExceptions"] = []
     elif page == "action-center":
         focused["opportunityPlays"] = []
         focused["anomalyFindings"] = []
         focused["stalledDeals"] = []
         focused["closureExceptions"] = []
+        focused["slippageDeals"] = []
     if page != "tldr":
         focused["weeklyBanner"] = None
         focused["weeklyInsights"] = []
+    page_revenue = {
+        "low-probability": {"value": focused["closureOverview"]["lowProbabilityRevenue"], "formatted": focused["closureOverview"]["formattedLowProbabilityRevenue"], "label": "open revenue scores below 50% closure probability"},
+        "slippage-risk": {"value": focused["closureOverview"]["slippageRevenue"], "formatted": focused["closureOverview"]["formattedSlippageRevenue"], "label": "open revenue has a moved close date"},
+        "stagnated-deals": {"value": focused["anomalyOverview"]["stalledRevenue"], "formatted": focused["anomalyOverview"]["formattedStalledRevenue"], "label": "open revenue has no material movement for 60+ days"},
+        "account-anomalies": {"value": focused["anomalyOverview"]["accountRevenue"], "formatted": focused["anomalyOverview"]["formattedAccountRevenue"], "label": "open revenue belongs to accounts with a risk anomaly"},
+        "opportunities": {"value": focused["opportunityOverview"]["peerRevenueBenchmark"], "formatted": focused["opportunityOverview"]["formattedPeerRevenueBenchmark"], "label": "peer-based revenue benchmark across repeatable plays; not pipeline or forecast"},
+        "action-center": {"value": focused["actionOverview"]["dealAcvRevenue"], "formatted": focused["actionOverview"]["formattedDealAcvRevenue"], "label": "unique deal ACV attached to action items; account-book ACV and growth benchmark are shown separately"},
+    }.get(page)
     return {
         "page": page, "label": label, "question": question, "persona": "executive",
         "asOf": AS_OF.isoformat(), "fy": fy_label(2026), "quarter": CUR_QUARTER,
@@ -684,4 +848,5 @@ def view(page: str, fs: FilterState, principal: Principal, label: str, question:
         "narrative": {"headline": "", "sentences": [], "provider": "computed"},
         "actions": [], "charts": [], "chartsSay": [], "extras": {}, "measures": {},
         "executive": focused,
+        "pageRevenueSummary": page_revenue,
     }

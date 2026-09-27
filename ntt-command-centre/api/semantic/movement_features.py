@@ -129,11 +129,18 @@ def features() -> pd.DataFrame:
         # --- slippage ------------------------------------------------------ #
         cd = g.loc[g["field"] == "close_date"]
         slip = 0
+        slip_count = 0
         if len(cd):
             old = pd.to_datetime(cd["old_value"], errors="coerce")
             new = pd.to_datetime(cd["new_value"], errors="coerce")
-            slip = int((new - old).dt.days.fillna(0).sum())
-        out["close_date_slips"].append(len(cd))
+            # A close-date edit is only slippage when the new date is later.
+            # Earlier moves are improvements and must not inflate either the
+            # re-date count or the cumulative number of days slipped.
+            later_moves = (new - old).dt.days.fillna(0)
+            later_moves = later_moves[later_moves > 0]
+            slip_count = int(len(later_moves))
+            slip = int(later_moves.sum())
+        out["close_date_slips"].append(slip_count)
         out["slip_days"].append(slip)
 
     df = pd.DataFrame(out)

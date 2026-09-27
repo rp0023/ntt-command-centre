@@ -5,6 +5,7 @@ import { auth } from "../api/client";
 import { useTheme } from "../theme/ThemeProvider";
 import { Icon, SIZE } from "./icons";
 import { PersonaMark } from "./PersonaPicker";
+import { useApp } from "../state/AppStateProvider";
 
 export function Header({
   onToggleRail,
@@ -13,6 +14,7 @@ export function Header({
   onToggleRail?: () => void;
 }) {
   const user = useSession();
+  const { state } = useApp();
   const { theme, toggle } = useTheme();
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -64,6 +66,11 @@ export function Header({
       <span className="hdr-name">Deal Intelligence</span>
 
       <div className="hdr-right">
+        {state.page === "tldr" && (
+          <button type="button" className="hdr-overview" onClick={() => window.dispatchEvent(new Event("ntt:open-brief"))}>
+            Overview
+          </button>
+        )}
         {/* The mark is the theme you would switch TO, matching the label:
             a moon on the light shell, a sun on the dark one. */}
         <button

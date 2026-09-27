@@ -95,7 +95,7 @@ PERSONAS: dict[str, Persona] = {
         scope_column=None,
         scope_op="all",
         home="tldr",
-        pages=("tldr", "closure-risk", "anomalies", "opportunities", "action-center"),
+        pages=("tldr", "low-probability", "slippage-risk", "stagnated-deals", "account-anomalies", "opportunities", "action-center"),
         deny_measures=("gp", "gross_profit", "margin", "budget", "coverage", "gap",
                        "profit_plan", "entity_concentration", "deal_next_step",
                        "days_silent_by_deal"),

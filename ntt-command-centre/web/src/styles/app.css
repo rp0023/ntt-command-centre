@@ -108,6 +108,9 @@ button {
     grid-template-columns: 248px minmax(0, 1fr);
     transition: grid-template-columns var(--dur) var(--ease);
   }
+  .app--executive .shell {
+    grid-template-columns: 285px minmax(0, 1fr);
+  }
   .app--rail-closed .shell {
     grid-template-columns: 0 minmax(0, 1fr);
   }
@@ -253,6 +256,72 @@ button {
   color: var(--text-2);
 }
 
+/* The executive rail reads like a short numbered briefing, not an app menu. */
+.side--executive { padding: var(--s-1) 0; }
+.side--executive .side__group + .side__group { margin-top: 1.55rem; }
+.side--executive .side__group:first-child .side__heading { display: none; }
+.side--executive .side__heading,
+.side--executive .side__group--closure .side__heading,
+.side--executive .side__group--anomaly .side__heading,
+.side--executive .side__group--cross-sell .side__heading {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 .75rem .55rem;
+  color: var(--muted);
+  font-family: var(--font-num);
+  font-size: .61rem;
+  font-weight: 650;
+  letter-spacing: .17em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  opacity: 1;
+}
+.side--executive .side__list { gap: .2rem; }
+.side--executive .side__item {
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: .72rem;
+  min-height: 0;
+  padding: .72rem .75rem;
+  border: 0;
+  border-radius: 12px;
+  color: var(--text);
+}
+.side--executive .side__item:hover { background: color-mix(in srgb, var(--persona) 7%, transparent); }
+.side--executive .side__item--on,
+.side--executive .side__group--closure .side__item--on,
+.side--executive .side__group--anomaly .side__item--on,
+.side--executive .side__group--cross-sell .side__item--on {
+  border-left-color: transparent;
+  background: color-mix(in srgb, var(--persona) 15%, var(--surface));
+  color: var(--persona);
+}
+.side--executive .side__glyph {
+  align-self: start;
+  justify-content: start;
+  padding-top: .18rem;
+  color: color-mix(in srgb, var(--persona) 72%, var(--muted));
+  font-family: var(--font-num);
+  font-size: .65rem;
+  letter-spacing: .04em;
+}
+.side--executive .side__item--on .side__glyph,
+.side--executive .side__group--closure .side__item--on .side__glyph,
+.side--executive .side__group--anomaly .side__item--on .side__glyph,
+.side--executive .side__group--cross-sell .side__item--on .side__glyph { color: var(--persona); }
+.side--executive .side__text { gap: .22rem; }
+.side--executive .side__label { font-size: .92rem; font-weight: 750; line-height: 1.25; }
+.side--executive .side__question,
+.side--executive .side__item--on .side__question {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-num);
+  font-size: .66rem;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+}
+
 /* ---------------------------------------------------------------- header */
 
 .hdr {
@@ -373,6 +442,8 @@ button {
   margin-left: auto;
   flex-shrink: 0;
 }
+.hdr-overview { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; height: 30px; min-width: 78px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 12px; line-height: 1; white-space: nowrap; }
+.hdr-overview:hover { background: var(--surface2); color: var(--text); }
 
 .seg {
   display: inline-flex;
