@@ -610,8 +610,10 @@ def _action_overview(actions: list[dict]) -> dict:
 
 
 def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
-                  closures: list[dict], plays: list[dict], opportunity_overview: dict,
-                  anomaly_overview: dict) -> tuple[dict, list[dict]]:
+                  closures: list[dict], stalled_deals: list[dict],
+                  slippage_deals: list[dict], plays: list[dict],
+                  opportunity_overview: dict, anomaly_overview: dict,
+                  closure_overview: dict) -> tuple[dict, list[dict]]:
     """The five decisions worth leadership time this week.
 
     Selection follows the accompanying Top10 workbook: absolute probability
@@ -693,48 +695,62 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
     insights: list[dict] = []
 
     def closure_insight(deal: dict | None, key: str, rank: int, title: str,
-                        conclusion: str, evidence: list[str], next_step: str) -> None:
+                        conclusion: str, evidence: list[str], next_step: str,
+                        page: str, action_key: str) -> None:
         if not deal:
             return
         insights.append({
             "key": key, "rank": rank, "theme": "closure", "title": title,
             "conclusion": conclusion, "evidence": evidence,
-            "nextStep": next_step, "page": "low-probability" if key == "weekly:forecast-probability" else "slippage-risk", "entity": deal["deal"],
-            "actionKey": f"closure:{deal['key']}",
+            "nextStep": next_step, "page": page, "entity": deal["deal"],
+            "actionKey": action_key,
         })
 
-    stalled_deal = next((d for d in closures if d["isStalled"]), None)
-    slipped_deal = next((d for d in closures if d["closeDateSlips"] > 0), None)
-    commit_deal = next((d for d in closures if d["forecastCategory"] == "Commit"), None)
-    best_case_deal = next((d for d in closures if d["forecastCategory"] == "Best Case"), None)
+    low_probability_deal = next((d for d in closures
+                                 if d["forecastCategory"] == "Commit"
+                                 and d["closureProbability"] is not None
+                                 and d["closureProbability"] < .5), None)
+    if not low_probability_deal:
+        low_probability_deal = next((d for d in closures
+                                     if d["closureProbability"] is not None
+                                     and d["closureProbability"] < .5), None)
+    stalled_deal = stalled_deals[0] if stalled_deals else None
+    slipped_deal = slippage_deals[0] if slippage_deals else None
     closure_insight(
-        commit_deal, "weekly:forecast-probability", 1,
+        low_probability_deal, "weekly:forecast-probability", 1,
         "Low-probability forecast calls need reclassification",
-        (f"{money(commit_low_revenue)} in Commit and {money(best_case_low_revenue)} in Best Case "
-         "sit below 50% closure probability."),
-        ([f"Commit: {count(len(commit_low))} deals; review this category first.",
-          f"Best Case: {count(len(best_case_low))} deals; review it second."]),
-        (f"Ask {commit_deal['owner']} for the buying event, decision date, and next meeting; "
-         "move it out of Commit if that evidence is absent." if commit_deal else ""),
+        (f"{closure_overview['formattedLowProbabilityRevenue']} across "
+         f"{count(closure_overview['lowProbabilityDeals'])} open deals sits below 50% closure probability."),
+        ([f"{low_probability_deal['deal']} has a {low_probability_deal['closureProbability']:.0%} model probability "
+          f"and {low_probability_deal['formattedRevenue']} ACV Revenue.",
+          f"It is currently forecast as {low_probability_deal['forecastCategory']} and rated {low_probability_deal['riskBand']} risk."]
+         if low_probability_deal else []),
+        (f"Ask {low_probability_deal['owner']} for the buying event, decision date, and next meeting; "
+         "move it out of the current forecast call if that evidence is absent." if low_probability_deal else ""),
+        "low-probability", f"closure:{low_probability_deal['key']}" if low_probability_deal else "",
     )
     closure_insight(
         slipped_deal, "weekly:slippage", 2, "Close-date slippage needs correction",
-        f"{money(slipped_revenue)} sits on {count(len(slipped))} deals whose close date has moved.",
+        f"{closure_overview['formattedSlippageRevenue']} sits on {count(closure_overview['stats']['slippedDeals'])} deals whose close date moved later.",
         ([f"{slipped_deal['deal']} moved {slipped_deal['closeDateSlips']} times, "
-          f"{slipped_deal['slipDays']} days later in total.", slipped_deal["deterioration"]]
+          f"{slipped_deal['slipDays']} days later in total.",
+          slipped_deal.get("evidence") or f"Current close date: {slipped_deal['closeDate'] or 'unavailable'}."]
          if slipped_deal else []),
         (f"Ask {slipped_deal['owner']} to confirm the date with customer evidence this week; "
          "otherwise re-date the deal." if slipped_deal else ""),
+        "slippage-risk", f"slippage:{slipped_deal['key']}" if slipped_deal else "",
     )
-    closure_insight(
-        stalled_deal, "weekly:stuck", 3, "Stuck pipeline needs an owner decision",
-        f"{money(stalled_revenue)} across {count(len(stalled))} deals has stopped moving.",
-        ([f"{stalled_deal['deal']} has been silent for {stalled_deal['silenceDays'] or 0} days.",
-          f"{stalled_deal['owner']} owns {stalled_deal['formattedRevenue']} ACV Revenue."]
-         if stalled_deal else []),
-        (f"Ask {stalled_deal['owner']} to log the next customer event within 48 hours, "
-         "or reset the close date." if stalled_deal else ""),
-    )
+    if stalled_deal:
+        insights.append({
+            "key": "weekly:stuck", "rank": 3, "theme": "anomalies",
+            "title": "Stuck pipeline needs an owner decision",
+            "conclusion": (f"{anomaly_overview['formattedStalledRevenue']} across "
+                           f"{count(anomaly_overview['stalledDeals'])} deals has no material movement for 60+ days."),
+            "evidence": [f"{stalled_deal['deal']} has been silent for {stalled_deal['silenceDays']} days.",
+                         f"{stalled_deal['owner']} owns {stalled_deal['dealValueLabel']} ACV Revenue."],
+            "nextStep": stalled_deal["nextStep"], "page": "stagnated-deals",
+            "entity": stalled_deal["deal"], "actionKey": stalled_deal["actionKey"],
+        })
     if findings:
         finding = findings[0]
         insights.append({
@@ -770,7 +786,8 @@ def payload(fs: FilterState, principal: Principal) -> dict:
     actions = _actions(plays, findings, stalled_deals, closures, slippage_deals)
     action_overview = _action_overview(actions)
     weekly_banner, weekly_insights = _weekly_focus(
-        fs, principal, findings, closures, plays, opportunity_overview, anomaly_overview,
+        fs, principal, findings, closures, stalled_deals, slippage_deals, plays,
+        opportunity_overview, anomaly_overview, closure_overview,
     )
     return {
         "messages": [opportunity_message, anomaly_message, closure_message],
