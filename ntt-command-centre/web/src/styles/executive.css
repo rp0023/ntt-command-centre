@@ -253,6 +253,10 @@
 .exec-disclosure { display: flex; gap: .65rem; border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1rem; color: var(--muted); background: var(--surface); }
 .exec-disclosure b { color: var(--text); white-space: nowrap; }
 .exec-actions { display: grid; gap: .8rem; }
+.exec-workflow-toast { --workflow-tone: var(--persona); position: fixed; z-index: 130; right: 1.25rem; bottom: 1.25rem; width: min(390px, calc(100vw - 2.5rem)); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; border: 1px solid color-mix(in srgb, var(--workflow-tone) 48%, var(--border)); border-left: 3px solid var(--workflow-tone); border-radius: 10px; background: var(--surface-raised, var(--surface)); padding: .85rem .8rem .85rem 1rem; box-shadow: 0 16px 44px rgba(0,0,0,.32); }
+.exec-workflow-toast--complete { --workflow-tone: var(--good); }.exec-workflow-toast--review { --workflow-tone: var(--persona); }.exec-workflow-toast--monitor { --workflow-tone: var(--warn); }.exec-workflow-toast--dismiss { --workflow-tone: var(--muted); }
+.exec-workflow-toast > div { display: grid; gap: .3rem; min-width: 0; }.exec-workflow-toast span { color: var(--workflow-tone); font-size: .62rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }.exec-workflow-toast strong { color: var(--text); font-size: .86rem; }.exec-workflow-toast p { display: -webkit-box; overflow: hidden; margin: 0; color: var(--text-2); font-size: .76rem; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.exec-workflow-toast button { align-self: start; width: 26px; height: 26px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--muted); font-size: 1rem; cursor: pointer; }.exec-workflow-toast button:hover { border-color: var(--workflow-tone); color: var(--text); }
 .exec-action-center__head { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
 .exec-action-center__head h2 { margin: 0; color: var(--text); font-size: clamp(1.2rem, 2vw, 1.65rem); }
 .exec-action-center__head p:last-child { margin: .3rem 0 0; color: var(--muted); }

@@ -312,6 +312,7 @@ function SlippageRisk({ data }: { data: ExecutivePayload }) {
 }
 
 type ActionView = "all" | "urgent" | "week" | "review" | "monitoring" | "actioned" | "open";
+type WorkflowNotice = { title: string; detail: string; tone: "complete" | "review" | "monitor" | "dismiss" };
 
 function ActionsCenter({ data, asOf }: { data: ExecutivePayload; asOf: string }) {
   const { state } = useApp();
@@ -325,9 +326,11 @@ function ActionsCenter({ data, asOf }: { data: ExecutivePayload; asOf: string })
   const [expanded, setExpanded] = useState<string | null>(state.actionKey);
   const [pending, setPending] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState<WorkflowNotice | null>(null);
   const refs = useRef<Record<string, HTMLElement | null>>({});
   useEffect(() => { try { setSaved(JSON.parse(localStorage.getItem(storageKey) ?? "{}")); } catch { setSaved({}); } }, [storageKey]);
   useEffect(() => { if (!state.actionKey) return; setView("all"); setExpanded(state.actionKey); requestAnimationFrame(() => refs.current[state.actionKey!]?.focus()); }, [state.actionKey]);
+  useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(null), 6500); return () => window.clearTimeout(timer); }, [notice]);
   const effectiveStatus = (a: ExecutiveAction) => saved[a.key]?.status ?? "New";
   const isOpen = (a: ExecutiveAction) => !["Actioned", "Dismissed"].includes(effectiveStatus(a));
   const dueThisWeek = (a: ExecutiveAction) => {
@@ -356,12 +359,20 @@ function ActionsCenter({ data, asOf }: { data: ExecutivePayload; asOf: string })
       : sort === "revenue" ? (b.revenueImpact ?? 0) - (a.revenueImpact ?? 0) || PRIORITY[a.priority] - PRIORITY[b.priority]
         : PRIORITY[a.priority] - PRIORITY[b.priority] || a.dueDate.localeCompare(b.dueDate)),
   [data.actions, saved, view, theme, source, owner, sort, asOf]);
+  const workflowNotice = (a: ExecutiveAction, status: string): WorkflowNotice => {
+    const revenue = a.formattedRevenueImpact ? ` Associated revenue: ${a.formattedRevenueImpact}.` : "";
+    if (status === "Actioned") return { tone: "complete", title: "Action executed", detail: `${a.nextStep} Owner: ${a.owner}.${revenue}` };
+    if (status === "In Review") return { tone: "review", title: "Review delegated", detail: `${a.headline} is now assigned to ${a.owner} for review.${revenue}` };
+    if (status === "Monitoring") return { tone: "monitor", title: "Follow-up scheduled", detail: `${a.headline} is marked for monitoring. ${a.owner} will retain the next-step context.${revenue}` };
+    return { tone: "dismiss", title: "Action dismissed", detail: `${a.headline} has been removed from the active worklist.${revenue}` };
+  };
   const save = (a: ExecutiveAction, optionKey: string) => {
     const option = a.options.find(o => o.key === optionKey); if (!option) return;
     const reason = (reasons[a.key] ?? "").trim(); if (option.needsReason && !reason) return;
     const next = { ...saved, [a.key]: { optionKey, status: option.status, ...(reason ? { reason } : {}), updatedAt: new Date().toISOString() } };
     setSaved(next); localStorage.setItem(storageKey, JSON.stringify(next));
     setPending(p => ({ ...p, [a.key]: "" })); setReasons(r => ({ ...r, [a.key]: "" }));
+    setNotice(workflowNotice(a, option.status));
   };
   const choose = (a: ExecutiveAction, optionKey: string) => {
     const option = a.options.find(o => o.key === optionKey); if (!option) return;
@@ -382,6 +393,7 @@ function ActionsCenter({ data, asOf }: { data: ExecutivePayload; asOf: string })
   }[page ?? ""] ?? "Action");
   const sources = [...new Set(data.actions.map(a => a.sourcePage).filter((page): page is NonNullable<typeof page> => Boolean(page)))];
   return <section className="exec-actions" aria-labelledby="action-center-title">
+    {notice && <aside className={`exec-workflow-toast exec-workflow-toast--${notice.tone}`} role="status" aria-live="polite"><div><span>Workflow update</span><strong>{notice.title}</strong><p>{notice.detail}</p></div><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss workflow notification">×</button></aside>}
     <div className="exec-action-center__head"><div><p className="exec-eyebrow">What to commit now?</p><h2 id="action-center-title">Action Center</h2><p>Every generated action is available here. Execute, delegate, snooze, or dismiss; decisions are saved in this browser for {state.identity}.</p></div><div className="exec-controls"><label>Theme<select value={theme} onChange={e => setTheme(e.target.value)}><option>All</option><option value="opportunities">Cross-sell / Upsell</option><option value="anomalies">Anomaly Detection</option><option value="closure">Deal Closure</option></select></label><label>Source<select value={source} onChange={e => setSource(e.target.value)}><option>All</option>{sources.map(v => <option key={v} value={v}>{sourceLabel(v)}</option>)}</select></label><label>Owner<select value={owner} onChange={e => setOwner(e.target.value)}><option>All</option>{owners.map(v => <option key={v}>{v}</option>)}</select></label><label>Sort<select value={sort} onChange={e => setSort(e.target.value)}><option value="priority">Priority</option><option value="revenue">Associated revenue · high to low</option><option value="due">Due date</option></select></label></div></div>
     <div className="exec-action-revenue" aria-label="Revenue associated with action items"><article className="exec-askable"><span>Unique deal ACV</span><strong>{data.actionOverview.formattedDealAcvRevenue}</strong><small>{data.actionOverview.uniqueDealActions} deals; duplicates across action types counted once</small><ContextAsk label="actionable deal ACV" overlay query={`Explain the ${data.actionOverview.formattedDealAcvRevenue} unique deal ACV represented in the Action Center across ${data.actionOverview.uniqueDealActions} deals. Break it down by source and priority without double-counting deals.`} /></article><article className="exec-askable"><span>Account-book ACV</span><strong>{data.actionOverview.formattedAccountBookRevenue}</strong><small>{data.actionOverview.accountActions} account actions; may overlap deal ACV</small><ContextAsk label="account-book ACV" overlay query={`Explain the ${data.actionOverview.formattedAccountBookRevenue} account-book ACV associated with ${data.actionOverview.accountActions} account actions. Identify overlap with deal actions and the highest-priority account signals.`} /></article><article className="exec-askable"><span>Growth benchmark</span><strong>{data.actionOverview.formattedGrowthBenchmark}</strong><small>{data.actionOverview.growthActions} plays; not pipeline or forecast</small><ContextAsk label="growth benchmark" overlay query={`Explain the ${data.actionOverview.formattedGrowthBenchmark} growth benchmark across ${data.actionOverview.growthActions} plays. Clarify why it is not pipeline or forecast and identify the plays with the strongest supporting evidence.`} /></article></div>
     <div className="exec-action-summary" aria-label="Action summary"><button type="button" onClick={() => setView("urgent")}><span>Urgent</span><strong>{counts.urgent}</strong></button><button type="button" onClick={() => setView("week")}><span>Due this week</span><strong>{counts.week}</strong></button><button type="button" onClick={() => setView("review")}><span>Delegated</span><strong>{counts.review}</strong></button><button type="button" onClick={() => setView("actioned")}><span>Executed</span><strong>{counts.actioned}</strong></button><button type="button" onClick={() => setView("open")}><span>Still open</span><strong>{counts.open}</strong></button></div>
