@@ -75,14 +75,12 @@ const BAND_TONE: Record<RiskBand, Tone> = {
   Critical: "danger",
 };
 
-/** Tone for the DS workbook's bucket label, taken from the colour word the
- *  label itself carries — "Dark Red / Very High Risk" is red because the
- *  workbook says so, not because this drawer ranked it. A label without a
- *  colour word ("Intermediate") is a fact, not a verdict, and stays neutral. */
+/** Tone for the DS model's mapped criticality label. */
 function bucketTone(label: string | null | undefined): Tone {
   const l = (label ?? "").trim().toLowerCase();
-  if (l.startsWith("dark red") || l.startsWith("red")) return "danger";
-  if (l.startsWith("dark green") || l.startsWith("green")) return "good";
+  if (l === "critical") return "danger";
+  if (l === "high") return "warn";
+  if (l === "low") return "good";
   return "neutral";
 }
 

@@ -17,6 +17,7 @@ from the profile menu. Existing shared-password sessions no longer work.
 PowerShell, from `ntt-command-centre/`, using the existing `api/myenv`:
 
 ```powershell
+$env:PYTHONPATH = "$PWD\api"
 .\api\myenv\Scripts\python.exe -m api.scripts.setup_demo_accounts
 .\api\myenv\Scripts\python.exe -m uvicorn api.main:app --host 127.0.0.1 --port 8808 --reload
 ```

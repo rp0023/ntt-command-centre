@@ -87,6 +87,17 @@ NUMERIC_FEATURES: tuple[str, ...] = (
     "owner_historical_win_rate",
 )
 
+# The workbook's literal risk bucket is the model's criticality scale. Keep
+# the relative probability bucket separate: it describes where pWin sits in
+# the book, while this mapping describes how urgently the deal merits review.
+RISK_BUCKET_CRITICALITY: dict[int, str] = {
+    1: "Critical",
+    2: "High",
+    3: "Watch",
+    4: "Low",
+    5: "Low",
+}
+
 
 def available() -> bool:
     """Whether the DS workbook has been ingested. The product degrades to its
@@ -136,9 +147,18 @@ def predictions() -> pd.DataFrame:
     df = raw.groupby("OpportunityCode", sort=False).agg(**agg).reset_index()
     df = df.rename(columns={"OpportunityCode": "opportunity_code"})
     df["is_open_in_model"] = df["data_split"].astype(str).str.contains("OPEN")
-    # Strip the workbook's leading ordinal ("1 - Dark Red / Very High Risk").
-    for col in ("risk_bucket_label", "risk_bucket_relative_label"):
-        df[col] = df[col].astype(str).str.split(" - ", n=1).str[-1]
+    # Map the literal bucket to the product's criticality vocabulary. The
+    # relative label remains the workbook's probability comparison and is
+    # intentionally kept as a separate field.
+    df["risk_bucket"] = pd.to_numeric(df["risk_bucket"], errors="coerce")
+    df["risk_bucket_label"] = (
+        df["risk_bucket"].round().astype("Int64").map(RISK_BUCKET_CRITICALITY)
+        .fillna("Unknown")
+    )
+    df["risk_bucket_relative_label"] = (
+        df["risk_bucket_relative_label"].astype(str)
+        .str.split(" - ", n=1).str[-1]
+    )
     df["driver_feature"] = df["driving_force"].map(_driver_feature)
     df["driver_direction"] = np.where(
         df["driving_force"].astype(str).str.contains("increased"), "up", "down"

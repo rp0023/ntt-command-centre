@@ -260,6 +260,7 @@ export interface ClosureException {
   key: string; deal: string; account: string; owner: string; stage: string;
   forecastCategory: string;
   riskBand: RiskBand; riskScore: number; closureProbability: number | null;
+  riskBucket: number | null; riskBucketLabel: string;
   mainDriver: string; closeDate: string | null; silenceDays: number | null;
   accountCycleDays: number | null; accountCycleSampleSize: number;
   plannedCycleDays: number | null; accountCycleGapDays: number;
@@ -464,8 +465,8 @@ export interface DealDetail {
   /** The two above as one table-cell line, "Stage reached · lowers pWin",
    *  worded by the server so every surface prints the same words. */
   dsDriver?: string | null;
-  /** The workbook's literal risk bucket (1 = Dark Red / Very High Risk) and
-   *  its label, plus the label of the quantile-relative bucket. */
+  /** The mapped model criticality (1 = Critical) and the label of the
+   *  quantile-relative probability bucket. */
   riskBucket?: number | null;
   riskBucketLabel?: string | null;
   riskBucketRelativeLabel?: string | null;

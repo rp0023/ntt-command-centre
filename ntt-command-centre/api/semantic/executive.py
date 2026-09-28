@@ -239,6 +239,10 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
     risk = P.risk_table()
     codes = set(slice_frame(fs, principal)["opportunity_code"])
     risk = risk[risk["opportunity_code"].isin(codes)].copy()
+    model_buckets = DS.predictions()[[
+        "opportunity_code", "risk_bucket", "risk_bucket_label",
+    ]].drop_duplicates("opportunity_code")
+    risk = risk.merge(model_buckets, on="opportunity_code", how="left")
     history_codes = set(slice_frame(FilterState(measure="revenue"), principal)["opportunity_code"])
     history = opportunities()
     history = history.loc[
@@ -363,6 +367,10 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             "account": str(row.account_name), "owner": str(row.owner), "stage": str(row.stage),
             "forecastCategory": str(row.forecast_category),
             "riskBand": str(row.risk_band), "riskScore": row.risk_score,
+            "riskBucket": (int(row.risk_bucket)
+                            if pd.notna(row.risk_bucket) else None),
+            "riskBucketLabel": (_safe_text(row.risk_bucket_label, "Unknown")
+                                if isinstance(row.risk_bucket_label, str) else "Unknown"),
             "closureProbability": pwin, "mainDriver": driver,
             "closeDate": row.close_date.date().isoformat() if not pd.isna(row.close_date) else None,
             "silenceDays": row.quiet_days if not pd.isna(row.quiet_days) else None,
