@@ -74,9 +74,7 @@ function BriefModal({ data, open, onClose }: { data: ExecutivePayload; open: boo
   </div>;
 }
 
-function BriefLegacy({ data, modalOpen, closeModal }: {
-  data: ExecutivePayload; modalOpen: boolean; closeModal: () => void;
-}) {
+function BriefLegacy({ data }: { data: ExecutivePayload }) {
   const { setPage, openAction } = useApp();
   const [selectedInsightKey, setSelectedInsightKey] = useState<string | null>(null);
   const selectedInsight = data.weeklyInsights.find(item => item.key === selectedInsightKey);
@@ -85,7 +83,6 @@ function BriefLegacy({ data, modalOpen, closeModal }: {
       && action.theme === selectedInsight.theme)
     : undefined;
   return <>
-    <BriefModal data={data} open={modalOpen} onClose={closeModal} />
     {data.weeklyBanner && <section className="exec-weekly-banners" aria-labelledby="weekly-banner-title">
       <article className={`exec-weekly-banner exec-weekly-banner--primary exec-weekly-banner--${data.weeklyBanner.tone}`}>
         <div className="exec-weekly-banner__copy"><p className="exec-eyebrow">This week</p>
@@ -125,12 +122,11 @@ function BriefLegacy({ data, modalOpen, closeModal }: {
   </>;
 }
 
-function Brief({ data, modalOpen, closeModal }: { data: ExecutivePayload; modalOpen: boolean; closeModal: () => void }) {
+function Brief({ data }: { data: ExecutivePayload }) {
   const { setPage, openAction } = useApp();
   const banner = data.weeklyBanner;
-  if (!banner) return <BriefLegacy data={data} modalOpen={modalOpen} closeModal={closeModal} />;
+  if (!banner) return <BriefLegacy data={data} />;
   return <>
-    <BriefModal data={data} open={modalOpen} onClose={closeModal} />
     <section className="brief-template" aria-labelledby="brief-template-title">
       <header className="brief-template__hero">
         <h2 id="brief-template-title"><span>{banner.headline.split(" ")[0]}</span>{banner.headline.slice(banner.headline.indexOf(" "))}</h2>
@@ -356,7 +352,9 @@ function ActionsCenter({ data, asOf }: { data: ExecutivePayload; asOf: string })
     || (view === "open" && isOpen(a));
   const rows = useMemo(() => data.actions
     .filter(a => matchesView(a) && (theme === "All" || a.theme === theme) && (source === "All" || a.sourcePage === source) && (owner === "All" || a.owner === owner))
-    .sort((a, b) => sort === "due" ? a.dueDate.localeCompare(b.dueDate) : PRIORITY[a.priority] - PRIORITY[b.priority] || a.dueDate.localeCompare(b.dueDate)),
+    .sort((a, b) => sort === "due" ? a.dueDate.localeCompare(b.dueDate)
+      : sort === "revenue" ? (b.revenueImpact ?? 0) - (a.revenueImpact ?? 0) || PRIORITY[a.priority] - PRIORITY[b.priority]
+        : PRIORITY[a.priority] - PRIORITY[b.priority] || a.dueDate.localeCompare(b.dueDate)),
   [data.actions, saved, view, theme, source, owner, sort, asOf]);
   const save = (a: ExecutiveAction, optionKey: string) => {
     const option = a.options.find(o => o.key === optionKey); if (!option) return;
@@ -384,7 +382,7 @@ function ActionsCenter({ data, asOf }: { data: ExecutivePayload; asOf: string })
   }[page ?? ""] ?? "Action");
   const sources = [...new Set(data.actions.map(a => a.sourcePage).filter((page): page is NonNullable<typeof page> => Boolean(page)))];
   return <section className="exec-actions" aria-labelledby="action-center-title">
-    <div className="exec-action-center__head"><div><p className="exec-eyebrow">What to commit now?</p><h2 id="action-center-title">Action Center</h2><p>Every generated action is available here. Execute, delegate, snooze, or dismiss; decisions are saved in this browser for {state.identity}.</p></div><div className="exec-controls"><label>Theme<select value={theme} onChange={e => setTheme(e.target.value)}><option>All</option><option value="opportunities">Cross-sell / Upsell</option><option value="anomalies">Anomaly Detection</option><option value="closure">Deal Closure</option></select></label><label>Source<select value={source} onChange={e => setSource(e.target.value)}><option>All</option>{sources.map(v => <option key={v} value={v}>{sourceLabel(v)}</option>)}</select></label><label>Owner<select value={owner} onChange={e => setOwner(e.target.value)}><option>All</option>{owners.map(v => <option key={v}>{v}</option>)}</select></label><label>Sort<select value={sort} onChange={e => setSort(e.target.value)}><option value="priority">Priority</option><option value="due">Due date</option></select></label></div></div>
+    <div className="exec-action-center__head"><div><p className="exec-eyebrow">What to commit now?</p><h2 id="action-center-title">Action Center</h2><p>Every generated action is available here. Execute, delegate, snooze, or dismiss; decisions are saved in this browser for {state.identity}.</p></div><div className="exec-controls"><label>Theme<select value={theme} onChange={e => setTheme(e.target.value)}><option>All</option><option value="opportunities">Cross-sell / Upsell</option><option value="anomalies">Anomaly Detection</option><option value="closure">Deal Closure</option></select></label><label>Source<select value={source} onChange={e => setSource(e.target.value)}><option>All</option>{sources.map(v => <option key={v} value={v}>{sourceLabel(v)}</option>)}</select></label><label>Owner<select value={owner} onChange={e => setOwner(e.target.value)}><option>All</option>{owners.map(v => <option key={v}>{v}</option>)}</select></label><label>Sort<select value={sort} onChange={e => setSort(e.target.value)}><option value="priority">Priority</option><option value="revenue">Associated revenue · high to low</option><option value="due">Due date</option></select></label></div></div>
     <div className="exec-action-revenue" aria-label="Revenue associated with action items"><article className="exec-askable"><span>Unique deal ACV</span><strong>{data.actionOverview.formattedDealAcvRevenue}</strong><small>{data.actionOverview.uniqueDealActions} deals; duplicates across action types counted once</small><ContextAsk label="actionable deal ACV" overlay query={`Explain the ${data.actionOverview.formattedDealAcvRevenue} unique deal ACV represented in the Action Center across ${data.actionOverview.uniqueDealActions} deals. Break it down by source and priority without double-counting deals.`} /></article><article className="exec-askable"><span>Account-book ACV</span><strong>{data.actionOverview.formattedAccountBookRevenue}</strong><small>{data.actionOverview.accountActions} account actions; may overlap deal ACV</small><ContextAsk label="account-book ACV" overlay query={`Explain the ${data.actionOverview.formattedAccountBookRevenue} account-book ACV associated with ${data.actionOverview.accountActions} account actions. Identify overlap with deal actions and the highest-priority account signals.`} /></article><article className="exec-askable"><span>Growth benchmark</span><strong>{data.actionOverview.formattedGrowthBenchmark}</strong><small>{data.actionOverview.growthActions} plays; not pipeline or forecast</small><ContextAsk label="growth benchmark" overlay query={`Explain the ${data.actionOverview.formattedGrowthBenchmark} growth benchmark across ${data.actionOverview.growthActions} plays. Clarify why it is not pipeline or forecast and identify the plays with the strongest supporting evidence.`} /></article></div>
     <div className="exec-action-summary" aria-label="Action summary"><button type="button" onClick={() => setView("urgent")}><span>Urgent</span><strong>{counts.urgent}</strong></button><button type="button" onClick={() => setView("week")}><span>Due this week</span><strong>{counts.week}</strong></button><button type="button" onClick={() => setView("review")}><span>Delegated</span><strong>{counts.review}</strong></button><button type="button" onClick={() => setView("actioned")}><span>Executed</span><strong>{counts.actioned}</strong></button><button type="button" onClick={() => setView("open")}><span>Still open</span><strong>{counts.open}</strong></button></div>
     <div className="exec-action-tabs" role="tablist" aria-label="Action status">{tabs.map(tab => <button key={tab.key} type="button" role="tab" aria-selected={view === tab.key} className={view === tab.key ? "is-active" : ""} onClick={() => setView(tab.key)}>{tab.label}<span>{tab.count}</span></button>)}</div>
@@ -416,8 +414,8 @@ export function ExecutivePage({ payload, meta }: { payload: ViewPayload; meta: M
   </section>;
   const isBrief = payload.page === "tldr";
   const revenueSummary = payload.pageRevenueSummary;
-  return <section className={`pv exec${isBrief ? " pv--executive-brief" : ""}`} aria-labelledby="pv-question"><header className="pv-head"><div className="pv-head__text"><h1 className="pv-head__question" id="pv-question">{payload.label}</h1><p className="exec-head__subheading">{payload.question}</p>{!isBrief && revenueSummary && <div className="exec-page-revenue-wrap"><p className="exec-page-revenue"><span>Revenue in focus</span><strong>{revenueSummary.formatted}</strong><em>{revenueSummary.label}</em></p><ContextAsk label={`${payload.label} revenue`} query={`Explain the ${revenueSummary.formatted} revenue in focus for ${payload.label}: ${revenueSummary.label}. Use the current ${payload.scope.label} and ${payload.quarter} scope, show exactly which records contribute to it, and flag any overlap or exclusions.`} /></div>}<p className="pv-head__meta">{payload.scope.label} · {payload.quarter} · as of {longDate(payload.asOf)}</p></div><div className="pv-head__controls"><MoreFilters dimensions={meta?.dimensions ?? []} active={state.filters} onSet={setFilter} onClear={clearFilters} /></div></header>
+  return <section className={`pv exec${isBrief ? " pv--executive-brief" : ""}`} aria-labelledby="pv-question"><BriefModal data={data} open={briefModalOpen} onClose={closeBriefModal} /><header className="pv-head"><div className="pv-head__text"><h1 className="pv-head__question" id="pv-question">{payload.label}</h1><p className="exec-head__subheading">{payload.question}</p>{!isBrief && revenueSummary && <div className="exec-page-revenue-wrap"><p className="exec-page-revenue"><span>Revenue in focus</span><strong>{revenueSummary.formatted}</strong><em>{revenueSummary.label}</em></p><ContextAsk label={`${payload.label} revenue`} query={`Explain the ${revenueSummary.formatted} revenue in focus for ${payload.label}: ${revenueSummary.label}. Use the current ${payload.scope.label} and ${payload.quarter} scope, show exactly which records contribute to it, and flag any overlap or exclusions.`} /></div>}<p className="pv-head__meta">{payload.scope.label} · {payload.quarter} · as of {longDate(payload.asOf)}</p></div><div className="pv-head__controls"><MoreFilters dimensions={meta?.dimensions ?? []} active={state.filters} onSet={setFilter} onClear={clearFilters} /></div></header>
     {payload.filters.length > 0 && <div className="pv-filters" aria-label="Active filters"><span className="pv-filters__label">Filtered</span>{payload.filters.map(f => <button type="button" className="pv-filters__chip" key={f.dim} onClick={()=>onFilter(f.dim as "country"|"quarter",f.value)}><span className="pv-filters__dim">{f.label}</span><span className="pv-filters__value">{f.value}</span><span className="pv-filters__x" aria-hidden="true">×</span></button>)}<button type="button" className="pv-filters__clear" onClick={clearFilters}>Clear all</button></div>}
-    {isBrief && <Brief data={data} modalOpen={briefModalOpen} closeModal={closeBriefModal} />}{payload.page === "opportunities" && <Opportunities data={data} />}{payload.page === "stagnated-deals" && <Anomalies data={data} />}{payload.page === "account-anomalies" && <Anomalies data={data} accountOnly />}{payload.page === "low-probability" && <ClosureRisk data={data} focus="low" />}{payload.page === "slippage-risk" && <SlippageRisk data={data} />}{payload.page === "action-center" && <ActionsCenter data={data} asOf={payload.asOf} />}
+    {isBrief && <Brief data={data} />}{payload.page === "opportunities" && <Opportunities data={data} />}{payload.page === "stagnated-deals" && <Anomalies data={data} />}{payload.page === "account-anomalies" && <Anomalies data={data} accountOnly />}{payload.page === "low-probability" && <ClosureRisk data={data} focus="low" />}{payload.page === "slippage-risk" && <SlippageRisk data={data} />}{payload.page === "action-center" && <ActionsCenter data={data} asOf={payload.asOf} />}
   </section>;
 }

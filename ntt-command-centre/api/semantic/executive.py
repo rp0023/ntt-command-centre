@@ -845,9 +845,6 @@ def view(page: str, fs: FilterState, principal: Principal, label: str, question:
         focused["stalledDeals"] = []
         focused["closureExceptions"] = []
         focused["slippageDeals"] = []
-    if page != "tldr":
-        focused["weeklyBanner"] = None
-        focused["weeklyInsights"] = []
     page_revenue = {
         "low-probability": {"value": focused["closureOverview"]["lowProbabilityRevenue"], "formatted": focused["closureOverview"]["formattedLowProbabilityRevenue"], "label": "open revenue scores below 50% closure probability"},
         "slippage-risk": {"value": focused["closureOverview"]["slippageRevenue"], "formatted": focused["closureOverview"]["formattedSlippageRevenue"], "label": "open revenue has a moved close date"},
