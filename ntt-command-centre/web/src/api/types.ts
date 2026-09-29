@@ -225,6 +225,10 @@ export interface ExecutivePlay {
   confidence: string; pilotAccount: string; pilotOwner: string;
   peerRevenueBenchmark: number; formattedPeerRevenueBenchmark: string;
   nextStep: string; reason: string;
+  /** Account owner from opportunities.csv (joined on AccountCode). */
+  rep?: string;
+  /** Source-backed info-panel rows for this recommendation. */
+  details?: { label: string; value: string }[];
 }
 export interface ExecutiveFinding {
   key: string; severity: Urgency; entityType: string; entityId: string; entity: string;
@@ -232,6 +236,12 @@ export interface ExecutiveFinding {
   category: string; evidence: string; owner: string;
   question: string; nextStep: string;
   revenue: number; formattedRevenue: string;
+  /** Readable AnomalyType name and its plain-English meaning. */
+  typeLabel?: string; typeMeaning?: string;
+  /** What DealValue measures for this finding's entity level. */
+  revenueLabel?: string;
+  /** Source-backed info-panel rows (workbook + opportunities/movement lookups). */
+  details?: { label: string; value: string }[];
 }
 export interface ExecutiveStalledDeal {
   key: string; deal: string; account: string; owner: string; stage: string;
@@ -246,6 +256,9 @@ export interface OpportunityOverview {
   veryHighRecommendations: number; repeatablePlays: number;
   topPlay: string; topPlayAccounts: number;
   peerWonRevenueMedian: number | null; formattedPeerWonRevenueMedian: string;
+  peerWonRevenueMin?: number; formattedPeerWonRevenueMin?: string;
+  peerWonRevenueMax?: number; formattedPeerWonRevenueMax?: string;
+  /** Sum of per-recommendation benchmarks; double-counts repeated offerings, so not displayed. */
   peerRevenueBenchmark: number; formattedPeerRevenueBenchmark: string;
 }
 export interface AnomalyOverview {
@@ -254,6 +267,9 @@ export interface AnomalyOverview {
   longestSilenceDays: number; accountFindings: number;
   accountsAffected: number; criticalAccountFindings: number;
   accountRevenue: number; formattedAccountRevenue: string;
+  entityCounts?: Record<string, number>; categoryCounts?: Record<string, number>;
+  highFindings?: number; dealFindings?: number;
+  dealFindingRevenue?: number; formattedDealFindingRevenue?: string;
   stagnationBands: { label: string; deals: number; revenue: number; formattedRevenue: string; share: number }[];
   forecastCalls: { call: string; deals: number; revenue: number; formattedRevenue: string }[];
 }
@@ -268,6 +284,8 @@ export interface ClosureException {
   accountCycleMismatch: boolean; accountCycleContext: string | null;
   isStalled: boolean; closeDateSlips: number; slipDays: number;
   deterioration: string;
+  /** Source-backed info-panel rows; when present they replace the generic fields. */
+  details?: { label: string; value: string }[];
   revenue: number; formattedRevenue: string;
 }
 export interface ExecutiveSlippageDeal {
@@ -303,8 +321,12 @@ export interface ExecutiveActionOption {
 export interface ExecutiveAction {
   key: string; theme: ExecutiveTheme; priority: Urgency; owner: string;
   dueDate: string; headline: string; description: string; nextStep: string;
+  /** "ai" when the next step was reworded by the language layer, "rules" otherwise. */
+  nextStepSource?: "ai" | "rules";
   revenueImpact?: number; formattedRevenueImpact?: string;
   revenueLabel?: string;
+  /** The workbook the revenue figure is read from. */
+  revenueSource?: string;
   revenueBasis?: "deal_acv" | "account_book_acv" | "peer_benchmark" | "anomaly_report";
   revenueEntityKey?: string; sourcePage?: Lens;
   options: ExecutiveActionOption[];
@@ -314,16 +336,22 @@ export interface ExecutiveActionOverview {
   dealAcvRevenue: number; formattedDealAcvRevenue: string;
   accountActions: number; accountBookRevenue: number; formattedAccountBookRevenue: string;
   growthActions: number; growthBenchmark: number; formattedGrowthBenchmark: string;
+  closureActions?: number; closureRevenue?: number; formattedClosureRevenue?: string;
+  anomalyDealActions?: number; anomalyEntityActions?: number;
+  anomalyDealGp?: number; formattedAnomalyDealGp?: string;
+  growthMedian?: number | null; formattedGrowthMedian?: string;
 }
 export interface ExecutiveWeeklyBanner {
   tone: Tone; headline: string; subline: string;
   stats: { label: string; value: string; tone: Tone }[];
-  supporting: { key: string; tone: Tone; label: string; headline: string; subline: string; page: Lens }[];
+  supporting: { key: string; tone: Tone; label: string; headline: string; subline: string; narrative?: string; stats?: { label: string; value: string }[]; action?: string; page: Lens }[];
 }
 export interface ExecutiveWeeklyInsight {
   key: string; rank: number; theme: ExecutiveTheme; title: string;
   conclusion: string; evidence: string[]; nextStep: string;
   page: Lens; entity: string; actionKey?: string;
+  /** Who or what the insight is about: "Account" / "Rep" / "Industry" / "Company" etc. */
+  subjectLabel?: string; subject?: string; subjectMeta?: string;
 }
 export interface ExecutivePayload {
   messages: ExecutiveMessage[];

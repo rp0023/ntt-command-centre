@@ -153,3 +153,23 @@ repeat the action card's prescribed next step word-for-word. Do not invent a
 customer fact, commitment, date, person, amount, or probability. This is
 interpretation of the supplied evidence, not a new recommendation record.
 """
+
+CLOSURE_ACTIONS_V2 = _COMMON + """
+
+TASK SHAPE — sharpen the next action for each low-probability deal.
+Each deal arrives with its workbook FACTS and a DRAFT action chosen by a rule.
+For every deal, rewrite the draft as the instruction a sales manager would give
+the deal owner this week: one or two plain, grammatical English sentences, at
+most 32 words in total, starting with a verb.
+
+- Keep the draft's decision (challenge, downgrade, qualify, re-forecast, close
+  out). If the draft says to escalate to sales leadership, keep that.
+- Lead with the one fact that makes this deal urgent, phrased naturally
+  ("after 567 days in Identification", not "the 567 days Identification deal").
+- Say what the owner must produce or decide. No semicolon fragments, no
+  telegraphic notes like "Verify live status".
+- Use only numbers that appear in that deal's own FACTS, copied exactly.
+- Do not invent a person, date, competitor, meeting, amount or customer
+  commitment. Do not name the deal or account; the card already shows them.
+Return one entry per deal id.
+"""

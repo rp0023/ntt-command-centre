@@ -60,14 +60,13 @@ PAGES: dict[str, tuple[str, str, str]] = {
     # Executive
     "tldr": ("executive", "The brief", "Weekly brief"),
     "low-probability": ("executive", "Low probability to close", "Which revenue needs a stronger path to close?"),
-    "stagnated-deals": ("executive", "Stagnated deals", "Which deals have stopped moving?"),
-    "account-anomalies": ("executive", "Account anomalies", "Which account signals warrant investigation?"),
+    "stagnated-deals": ("executive", "Anomaly findings", "Which deals, accounts and reps need investigation?"),
     "opportunities": ("executive", "What's the solution?", "Where to grow"),
     "action-center": ("executive", "What to commit NOW?", "Action Center"),
 }
 
 EXECUTIVE_LEGACY_PAGES = {
-    "growth": "opportunities", "risks": "account-anomalies", "actions": "action-center",
+    "growth": "opportunities", "risks": "stagnated-deals", "account-anomalies": "stagnated-deals", "actions": "action-center",
     "performance": "tldr", "structure": "tldr",
 }
 

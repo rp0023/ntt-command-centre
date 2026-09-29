@@ -656,7 +656,7 @@ def _weekly_focus(findings: list[dict], closures: list[dict],
             {
                 "key": "closure", "tone": "danger", "label": "Deal closure likelihood",
                 "headline": (f"{closure_overview['formattedLowProbabilityRevenue']} ACV GP "
-                             "below 50% probability"),
+                             "is below 50% win probability"),
                 "subline": (f"{count(closure_overview['lowProbabilityDeals'])} open deals "
                             "are below 50% model probability."),
                 "page": "low-probability",
@@ -664,7 +664,7 @@ def _weekly_focus(findings: list[dict], closures: list[dict],
             {
                 "key": "anomalies", "tone": "warn", "label": "Anomaly detection",
                 "headline": (f"{anomaly_overview['formattedStalledRevenue']} ACV GP "
-                             "on stagnant deals"),
+                             "is sitting on stagnant deals"),
                 "subline": (f"{count(anomaly_overview['stalledDeals'])} stagnant deals across "
                             f"{count(anomaly_overview['stalledAccounts'])} accounts; "
                             f"{count(anomaly_overview['stalledPastDue'])} are past due."),
@@ -672,8 +672,8 @@ def _weekly_focus(findings: list[dict], closures: list[dict],
             },
             {
                 "key": "opportunities", "tone": "good", "label": "Cross-sell and upsell",
-                "headline": (f"{opportunity_overview['formattedPeerRevenueBenchmark']} "
-                             "peer-based revenue benchmark"),
+                "headline": (f"{count(opportunity_overview['recommendations'])} cross-sell and upsell "
+                             "recommendations are ready to validate"),
                 "subline": (f"{count(opportunity_overview['recommendations'])} source recommendations "
                             f"across {count(opportunity_overview['accounts'])} accounts; "
                             f"{count(opportunity_overview['repeatablePlays'])} repeatable plays."),
@@ -832,9 +832,9 @@ def view(page: str, fs: FilterState, principal: Principal, label: str, question:
     page_revenue = {
         "low-probability": {"value": focused["closureOverview"]["lowProbabilityRevenue"], "formatted": focused["closureOverview"]["formattedLowProbabilityRevenue"], "label": "open revenue scores below 50% closure probability"},
         "slippage-risk": {"value": focused["closureOverview"]["slippageRevenue"], "formatted": focused["closureOverview"]["formattedSlippageRevenue"], "label": "open revenue has a moved close date"},
-        "stagnated-deals": {"value": focused["anomalyOverview"]["accountRevenue"], "formatted": focused["anomalyOverview"]["formattedAccountRevenue"], "label": "deal value represented in the supplied anomaly table"},
+        "stagnated-deals": {"value": focused["anomalyOverview"].get("dealFindingRevenue", focused["anomalyOverview"]["accountRevenue"]), "formatted": focused["anomalyOverview"].get("formattedDealFindingRevenue", focused["anomalyOverview"]["formattedAccountRevenue"]), "label": (f"ACV GP on the {focused['anomalyOverview'].get('dealFindings', 0)} flagged deals; account, industry and rep findings overlap these and are not added")},
         "account-anomalies": {"value": focused["anomalyOverview"]["accountRevenue"], "formatted": focused["anomalyOverview"]["formattedAccountRevenue"], "label": "open revenue belongs to accounts with a risk anomaly"},
-        "opportunities": {"value": focused["opportunityOverview"]["peerRevenueBenchmark"], "formatted": focused["opportunityOverview"]["formattedPeerRevenueBenchmark"], "label": "peer-based revenue benchmark across repeatable plays; not pipeline or forecast"},
+        "opportunities": {"value": focused["opportunityOverview"]["peerWonRevenueMedian"] or 0, "formatted": focused["opportunityOverview"]["formattedPeerWonRevenueMedian"], "label": (f"median peer won revenue per recommendation (range {focused['opportunityOverview'].get('formattedPeerWonRevenueMin', 'n/a')} to {focused['opportunityOverview'].get('formattedPeerWonRevenueMax', 'n/a')}); a benchmark, not pipeline or forecast")},
         "action-center": {"value": focused["actionOverview"]["dealAcvRevenue"], "formatted": focused["actionOverview"]["formattedDealAcvRevenue"], "label": "unique deal ACV attached to action items; account-book ACV and growth benchmark are shown separately"},
     }.get(page)
     return {

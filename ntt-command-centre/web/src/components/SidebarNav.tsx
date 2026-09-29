@@ -44,7 +44,7 @@ const GROUPS: Record<PersonaKey, NavGroup[]> = {
   executive: [
     { heading: "Weekly overview", pages: ["tldr"] },
     { heading: "Deal closure likelihood", pages: ["low-probability", "slippage-risk"], emphasis: "closure" },
-    { heading: "Anomaly Detection", pages: ["stagnated-deals", "account-anomalies"], emphasis: "anomaly" },
+    { heading: "Anomaly Detection", pages: ["stagnated-deals"], emphasis: "anomaly" },
     { heading: "Cross-sell and upsell", pages: ["opportunities"], emphasis: "cross-sell" },
     { heading: "Decision workflow", pages: ["action-center"] },
   ],
@@ -121,11 +121,11 @@ export function SidebarNav({
       case "slippage-risk":
         return `${executive.closureOverview.formattedSlippageRevenue} with moved close dates`;
       case "stagnated-deals":
-        return `${executive.anomalyOverview.formattedStalledRevenue} has not moved`;
+        return `${executive.anomalyFindings.length} findings · ${executive.anomalyOverview.criticalAccountFindings} critical`;
       case "account-anomalies":
         return `${executive.anomalyOverview.formattedAccountRevenue} under investigation`;
       case "opportunities":
-        return `${executive.opportunityOverview.formattedPeerRevenueBenchmark} peer-based benchmark`;
+        return `${executive.opportunityOverview.formattedPeerWonRevenueMedian} median peer benchmark`;
       default:
         return page.question;
     }

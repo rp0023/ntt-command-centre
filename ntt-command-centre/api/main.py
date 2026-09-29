@@ -74,6 +74,11 @@ def _warm() -> None:
                 V.view(p.persona.home, FilterState(), p)
         except Exception as e:  # noqa: BLE001 — warming must never take the process down
             print(f"warm-up skipped: {type(e).__name__}: {e}")
+        try:
+            from semantic import storyline
+            print(f"closure actions refined: {storyline.refine_closure_actions()}")
+        except Exception as e:  # noqa: BLE001 — the rule-based actions remain in place
+            print(f"closure action refinement skipped: {type(e).__name__}: {e}")
 
     threading.Thread(target=run, name="warm-up", daemon=True).start()
 

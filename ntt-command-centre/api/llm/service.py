@@ -484,7 +484,7 @@ def _executive_action_answer(q: str, fs: M.FilterState, principal: Principal) ->
         lead = payload["opportunityPlays"][0] if payload["opportunityPlays"] else None
         sentences = [{"text": (f"{overview['recommendations']} source recommendations span "
                                f"{overview['accounts']} accounts; {overview['repeatablePlays']} are repeatable plays. "
-                               f"Their peer-based revenue benchmark is {overview['formattedPeerRevenueBenchmark']}.") ,
+                               f"The median peer won revenue per recommendation is {overview['formattedPeerWonRevenueMedian']}.") ,
                       "lens": "answer", "claim": None}]
         if lead:
             sentences.append({"text": f"Start with {lead['offering']}: {lead['nextStep']}",

@@ -116,8 +116,11 @@ def _retry_after(body: bytes) -> float:
 
 def _post(url: str, payload: dict, headers: dict, timeout: float) -> dict:
     body = json.dumps(payload).encode()
+    # Groq's Cloudflare edge answers 403 "error code: 1010" to urllib's default
+    # "Python-urllib/x.y" agent, so every request names the product instead.
     req = urllib.request.Request(url, data=body, headers={
-        "content-type": "application/json", **headers})
+        "content-type": "application/json", "user-agent": "ntt-command-centre/1.0",
+        **headers})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode())
