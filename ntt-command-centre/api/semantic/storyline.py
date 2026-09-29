@@ -641,8 +641,8 @@ def payload() -> dict:
          "detail": f"{_plural(len(low), 'deal', 'deals')} below 50% win probability"},
         {"key": "anomalies", "tone": "warn", "amount": money(anomaly_total), "status": "needs attention",
          "detail": f"{_plural(len(findings), 'finding', 'findings')}, {critical_findings} critical; figures can overlap"},
-        {"key": "opportunities", "tone": "good", "amount": money(growth_total), "status": "upside",
-         "detail": f"{_plural(len(plays), 'recommendation', 'recommendations')}, {strong_plays} high confidence; peer benchmark, not pipeline"},
+        {"key": "opportunities", "tone": "good", "amount": money(growth_total), "status": "sum of peer benchmarks",
+         "detail": f"{_plural(len(plays), 'recommendation', 'recommendations')}, {strong_plays} high confidence; not pipeline or forecast"},
     ]
     summary_by_key = {item["key"]: item for item in summary}
 
@@ -652,13 +652,13 @@ def payload() -> dict:
     attention_total = low_revenue + anomaly_total
     headline_parts = [
         {"text": money(attention_total), "tone": "danger"},
-        {"text": " needs attention across deal closure and anomalies, while cross-sell points to "},
+        {"text": " needs attention across deal closure and anomalies, while cross-sell shows "},
         {"text": money(growth_total), "tone": "good"},
-        {"text": " of upside."},
+        {"text": " in summed peer benchmarks."},
     ]
     headline_text = "".join(part["text"] for part in headline_parts)
     headline_subline = (f"Closure risk is ACV revenue and anomalies are ACV GP that can overlap; "
-                        f"cross-sell upside is a peer benchmark, not pipeline.")
+                        f"cross-sell is the sum of peer average won revenue, not pipeline.")
 
     return {
         "messages": [
