@@ -102,6 +102,17 @@ export const auth = {
   },
 };
 
+/** The ask endpoint rejects questions over 400 characters with a 422. Prompts
+ *  put their instruction first, so trimming the tail at a word boundary keeps
+ *  the request valid without losing what is being asked. */
+export const MAX_QUESTION_CHARS = 400;
+export function clampQuestion(q: string): string {
+  const text = q.replace(/\s+/g, " ").trim();
+  if (text.length <= MAX_QUESTION_CHARS) return text;
+  const cut = text.slice(0, MAX_QUESTION_CHARS - 1);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), MAX_QUESTION_CHARS - 40))}…`;
+}
+
 export const api = {
   meta: (ctx: Ctx, signal?: AbortSignal) =>
     get<MetaPayload>(`/api/meta?${qs(ctx)}`, signal),
@@ -138,7 +149,7 @@ export const api = {
   ask: (ctx: Ctx, q: string, chartsSay: string[], signal?: AbortSignal,
         chart?: { id: string; page: string }) =>
     get<AskResponse>(
-      `/api/ai/ask?${qs(ctx, { q, chartsSay: JSON.stringify(chartsSay),
+      `/api/ai/ask?${qs(ctx, { q: clampQuestion(q), chartsSay: JSON.stringify(chartsSay),
                                chart: chart?.id, page: chart?.page })}`, signal),
 
   explain: (ctx: Ctx, card: ActionCard, chartsSay: string[], signal?: AbortSignal) =>

@@ -341,10 +341,18 @@ export interface ExecutiveActionOverview {
   anomalyDealGp?: number; formattedAnomalyDealGp?: string;
   growthMedian?: number | null; formattedGrowthMedian?: string;
 }
+export interface ExecutiveUseCaseSummary {
+  key: ExecutiveTheme; tone: Tone; amount: string; status: string; detail: string;
+}
 export interface ExecutiveWeeklyBanner {
   tone: Tone; headline: string; subline: string;
+  /** One figure and status per use case, for the application-wide headline. */
+  summary?: ExecutiveUseCaseSummary[];
+  /** The headline sentence in pieces; a piece with a tone is a highlighted figure. */
+  headlineParts?: { text: string; tone?: Tone }[];
+  attentionTotal?: number; formattedAttentionTotal?: string;
   stats: { label: string; value: string; tone: Tone }[];
-  supporting: { key: string; tone: Tone; label: string; headline: string; subline: string; narrative?: string; stats?: { label: string; value: string }[]; action?: string; page: Lens }[];
+  supporting: { key: string; tone: Tone; label: string; headline: string; subline: string; amount?: string; status?: string; detail?: string; narrative?: string; stats?: { label: string; value: string }[]; action?: string; page: Lens }[];
 }
 export interface ExecutiveWeeklyInsight {
   key: string; rank: number; theme: ExecutiveTheme; title: string;
@@ -352,6 +360,8 @@ export interface ExecutiveWeeklyInsight {
   page: Lens; entity: string; actionKey?: string;
   /** Who or what the insight is about: "Account" / "Rep" / "Industry" / "Company" etc. */
   subjectLabel?: string; subject?: string; subjectMeta?: string;
+  /** Two-to-four words saying what the insight's revenue figure is. */
+  valueCaption?: string;
 }
 export interface ExecutivePayload {
   messages: ExecutiveMessage[];

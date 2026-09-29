@@ -61,7 +61,7 @@ def _brief_insights(closures: list[dict], low: list[dict], findings: list[dict],
             {"label": "Findings", "value": str(len(findings))},
             {"label": "Critical", "value": str(len(critical))},
             {"label": "High", "value": str(high)},
-            {"label": "Flagged deal GP", "value": money(deal_value)},
+            {"label": "Total ACV GP", "value": money(sum(f["revenue"] for f in findings))},
         ],
         "action": (f"Investigate the {_plural(len(critical), 'Critical finding', 'Critical findings')} first, "
                    f"starting with {critical[0]['entity']} ({ANOMALY_TYPES.get(critical[0]['question'], (critical[0]['question'],))[0].lower()}).") if critical
@@ -587,13 +587,14 @@ def payload() -> dict:
         d = max(pool, key=lambda x: x["revenue"])
         insights.append({
             "key": "weekly:closure", "rank": 1, "theme": "closure",
-            "title": "Largest deal below 50% probability" if low else "Largest open deal",
+            "title": "Largest deal is at high risk" if low else "Largest open deal",
             "subjectLabel": "Account", "subject": d["account"],
             "subjectMeta": "",
             "conclusion": (f"{d['formattedRevenue']} of ACV revenue at a {d['closureProbability']:.1%} model probability, "
                            f"the largest of the {len(pool)} deals{' below 50%' if low else ''}{tied_with(pool, d, 'revenue', 'deal')}."),
             "evidence": [d["mainDriver"]], "nextStep": d["nextStep"], "page": "low-probability",
             "entity": d["deal"], "actionKey": f"closure:{d['key']}",
+            "valueCaption": "this deal's ACV revenue",
         })
     if findings:
         f = max(findings, key=lambda x: x["revenue"])
@@ -608,6 +609,8 @@ def payload() -> dict:
             "evidence": [f"Severity {f['severityScore']} of 100 ({f['severity']})"],
             "nextStep": f["nextStep"], "page": "stagnated-deals", "entity": f["entity"],
             "actionKey": f"anomaly:{f['key']}",
+            "valueCaption": {"Opportunity": "this deal's ACV GP", "Account": "this account's ACV GP",
+                             "Industry": "this industry's ACV GP", "Rep": "this rep's ACV GP"}.get(f["entityType"], "ACV GP"),
         })
     if plays:
         rank = {"Very High": 0, "High": 1, "Medium": 2, "Low": 3}
@@ -621,9 +624,41 @@ def payload() -> dict:
                            f"{len(plays)} recommendations{tied_with(plays, p, 'peerRevenueBenchmark', 'pilotAccount')}."),
             "evidence": [p["reason"]], "nextStep": p["nextStep"], "page": "opportunities",
             "entity": p["pilotAccount"], "actionKey": f"opportunity:{p['key']}",
+            "valueCaption": "peer avg won revenue",
         })
 
     brief = _brief_insights(closures, low, findings, plays)
+
+    # Application summary: one figure and one status per use case. Each figure
+    # is the same total its own page shows; they measure different things
+    # (deal revenue, finding GP, a peer benchmark) and are never added together.
+    anomaly_total = sum(f["revenue"] for f in findings)
+    growth_total = sum(p["peerRevenueBenchmark"] for p in plays)
+    critical_findings = sum(f["severity"] == "Critical" for f in findings)
+    strong_plays = sum(p["confidence"] in ("High", "Very High") for p in plays)
+    summary = [
+        {"key": "closure", "tone": "danger", "amount": money(low_revenue), "status": "at risk",
+         "detail": f"{_plural(len(low), 'deal', 'deals')} below 50% win probability"},
+        {"key": "anomalies", "tone": "warn", "amount": money(anomaly_total), "status": "needs attention",
+         "detail": f"{_plural(len(findings), 'finding', 'findings')}, {critical_findings} critical; figures can overlap"},
+        {"key": "opportunities", "tone": "good", "amount": money(growth_total), "status": "upside",
+         "detail": f"{_plural(len(plays), 'recommendation', 'recommendations')}, {strong_plays} high confidence; peer benchmark, not pipeline"},
+    ]
+    summary_by_key = {item["key"]: item for item in summary}
+
+    # Headline sentence for the whole application. "Needs attention" is the
+    # simple sum the business asked for: closure ACV revenue plus the anomaly
+    # total (ACV GP, which can overlap). The subline states that mix.
+    attention_total = low_revenue + anomaly_total
+    headline_parts = [
+        {"text": money(attention_total), "tone": "danger"},
+        {"text": " needs attention across deal closure and anomalies, while cross-sell points to "},
+        {"text": money(growth_total), "tone": "good"},
+        {"text": " of upside."},
+    ]
+    headline_text = "".join(part["text"] for part in headline_parts)
+    headline_subline = (f"Closure risk is ACV revenue and anomalies are ACV GP that can overlap; "
+                        f"cross-sell upside is a peer benchmark, not pipeline.")
 
     return {
         "messages": [
@@ -640,6 +675,6 @@ def payload() -> dict:
         "closureOverview": {"series": declared_series, "lowProbabilityRevenue": low_revenue, "formattedLowProbabilityRevenue": money(low_revenue), "lowProbabilityDeals": len(low), "slippageRevenue": 0, "formattedSlippageRevenue": "Not supplied", "slipEvents": 0, "totalSlipDays": 0, "slippedPastDueDeals": 0, "stats": {"openDeals": len(closures), "highRiskDeals": sum(d['riskBucketLabel'] in ('Critical', 'High') for d in closures), "pastDueDeals": 0, "stalledDeals": 0, "slippedDeals": 0}},
         "slippageDeals": [], "actions": actions,
         "actionOverview": {"totalActions": len(actions), "uniqueDealActions": len(closures), "dealAcvRevenue": sum(d['revenue'] for d in closures), "formattedDealAcvRevenue": money(sum(d['revenue'] for d in closures)), "accountActions": len(findings), "accountBookRevenue": account_revenue, "formattedAccountBookRevenue": money(account_revenue), "growthActions": len(plays), "growthBenchmark": benchmark, "formattedGrowthBenchmark": money(benchmark), "closureActions": len(closures), "closureRevenue": sum(d['revenue'] for d in closures), "formattedClosureRevenue": money(sum(d['revenue'] for d in closures)), "anomalyDealActions": len({f["entityId"] for f in deal_findings}), "anomalyEntityActions": len(findings) - len(deal_findings), "anomalyDealGp": deal_finding_revenue, "formattedAnomalyDealGp": money(deal_finding_revenue), "growthMedian": peer_median, "formattedGrowthMedian": money(peer_median) if plays else "Not supplied"},
-        "weeklyBanner": {"tone": "danger", "headline": f"{money(low_revenue)} of revenue is below 50% win probability", "subline": "Three use cases, one action each. All figures come from the storyline workbook.", "stats": [{"label": "Open deals", "value": str(len(closures)), "tone": "accent"}, {"label": "Below 50%", "value": str(len(low)), "tone": "danger"}, {"label": "Anomalies", "value": str(len(findings)), "tone": "warn"}], "supporting": [{"key": "closure", "tone": "danger", "label": "Deal closure likelihood", "headline": f"{money(low_revenue)} of revenue is below 50% win probability", "subline": f"{len(low)} supplied deal records.", **brief["closure"], "page": "low-probability"}, {"key": "anomalies", "tone": "warn", "label": "Anomaly detection", "headline": f"{len(findings)} {'anomaly needs' if len(findings) == 1 else 'anomalies need'} investigation", "subline": "From the anomaly table.", **brief["anomalies"], "page": "stagnated-deals"}, {"key": "opportunities", "tone": "good", "label": "Cross-sell and upsell", "headline": f"{len(plays)} cross-sell and upsell {'recommendation is' if len(plays) == 1 else 'recommendations are'} ready to validate", "subline": "From the enrichment-potential table.", **brief["opportunities"], "page": "opportunities"}]},
+        "weeklyBanner": {"tone": "danger", "headline": headline_text, "headlineParts": headline_parts, "attentionTotal": attention_total, "formattedAttentionTotal": money(attention_total), "summary": summary, "subline": headline_subline, "stats": [{"label": "Open deals", "value": str(len(closures)), "tone": "accent"}, {"label": "Below 50%", "value": str(len(low)), "tone": "danger"}, {"label": "Anomalies", "value": str(len(findings)), "tone": "warn"}], "supporting": [{"key": "closure", "tone": "danger", "label": "Deal closure likelihood", "headline": f"{money(low_revenue)} of revenue is at risk", "subline": f"{len(low)} supplied deal records.", **brief["closure"], "amount": summary_by_key["closure"]["amount"], "status": summary_by_key["closure"]["status"], "detail": summary_by_key["closure"]["detail"], "page": "low-probability"}, {"key": "anomalies", "tone": "warn", "label": "Anomaly detection", "headline": f"{len(findings)} {'anomaly needs' if len(findings) == 1 else 'anomalies need'} investigation", "subline": "From the anomaly table.", **brief["anomalies"], "amount": summary_by_key["anomalies"]["amount"], "status": summary_by_key["anomalies"]["status"], "detail": summary_by_key["anomalies"]["detail"], "page": "stagnated-deals"}, {"key": "opportunities", "tone": "good", "label": "Cross-sell and upsell", "headline": f"{len(plays)} cross-sell and upsell {'recommendation is' if len(plays) == 1 else 'recommendations are'} ready to validate", "subline": "From the enrichment-potential table.", **brief["opportunities"], "amount": summary_by_key["opportunities"]["amount"], "status": summary_by_key["opportunities"]["status"], "detail": summary_by_key["opportunities"]["detail"], "page": "opportunities"}]},
         "weeklyInsights": insights,
     }

@@ -114,14 +114,16 @@ export function SidebarNav({
     switch (page.key) {
       case "tldr":
         return executive.weeklyInsights.length
-          ? `${executive.weeklyInsights.length} insights, ${executive.actions.length} actions`
+          ? `${executive.weeklyInsights.length} insights, ${executive.weeklyInsights.length} actions`
           : "Weekly insights and actions";
       case "low-probability":
         return `${executive.closureOverview.formattedLowProbabilityRevenue} below 50% probability`;
       case "slippage-risk":
         return `${executive.closureOverview.formattedSlippageRevenue} with moved close dates`;
       case "stagnated-deals":
-        return `${executive.anomalyFindings.length} findings · ${executive.anomalyOverview.criticalAccountFindings} critical`;
+        // Page payloads empty the other pages' lists, so the rail reads the
+        // overview counts, which every page receives in full.
+        return `${executive.anomalyOverview.accountFindings} findings · ${executive.anomalyOverview.criticalAccountFindings} critical`;
       case "account-anomalies":
         return `${executive.anomalyOverview.formattedAccountRevenue} under investigation`;
       case "opportunities":
