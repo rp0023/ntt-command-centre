@@ -138,6 +138,7 @@
 .exec-revenue-overview { display: grid; gap: .85rem; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: .85rem 0; }
 .exec-revenue-overview__head { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
 .exec-revenue-overview__head h2 { margin: 0; color: var(--text); font-size: clamp(1.05rem, 1.7vw, 1.4rem); }
+.exec-revenue-caption { max-width: 640px; margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.55; }
 .exec-revenue-series { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1rem, 3vw, 2.5rem); }
 .exec-revenue-series__item { --series-tone: var(--persona); display: grid; gap: .38rem; min-width: 0; }
 .exec-revenue-series__item--best-case { --series-tone: var(--warn); }
