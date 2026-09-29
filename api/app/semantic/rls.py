@@ -30,7 +30,7 @@ class Principal:
 PERSONAS: dict[str, Principal] = {
     "executive": Principal(
         key="executive",
-        name="Entity executive",
+        name="Vikesh",
         role="Tells the North America pipeline story to entity stakeholders.",
         lens="TLDR, coverage vs plan, and the three decisions that cannot wait.",
         scope_label="North America · all LOBs",

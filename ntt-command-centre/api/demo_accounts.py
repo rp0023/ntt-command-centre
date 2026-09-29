@@ -83,7 +83,7 @@ def load_registry() -> dict:
             "accounts": [
                 {
                     "id": "executive-na",
-                    "name": "North America Executive",
+                    "name": "Vikesh",
                     "email": email,
                     "aliases": [],
                     "role": "executive",

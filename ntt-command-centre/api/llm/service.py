@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 
 from semantic import anomalies as ANOM
@@ -31,6 +32,7 @@ from semantic import measures as M
 from semantic import narrative as N
 from semantic import predict as P
 from semantic import query as Q
+from semantic import answers as A
 from semantic.personas import Principal
 from . import grounding as G
 from . import prompts, providers
@@ -257,7 +259,6 @@ def _refusal(q: str, principal: Principal, reason: str, plan: dict | None = None
     The calm decline. One plain sentence saying why, and two questions for this
     persona that are known to work, so a dead end always has a way out.
     """
-    from ..semantic import answers as A
 
     out = {"question": q, "refused": True, "degraded": False, "provider": "computed",
            "answer": {"headline": headline,
@@ -275,7 +276,7 @@ def _plan_text(q: str, fs: M.FilterState, principal: Principal,
     keyword rules when none will. Raises `providers.LLMUnavailable` only when
     neither produced a plan, so the caller can refuse with alternatives.
     """
-    from ..semantic.dimensions import REGISTRY
+    from semantic.dimensions import REGISTRY
     from . import planner_fallback
 
     catalog = CAT.render()
@@ -313,6 +314,224 @@ def _plan_text(q: str, fs: M.FilterState, principal: Principal,
         return plan, "keyword rules"
 
 
+def _action_ai_perspective(action: dict) -> dict | None:
+    """Ask the configured LLM to interpret, never replace, an action's facts."""
+    revenue = action.get("formattedRevenueImpact") or "Not supplied"
+    pack = G.pack_figures({
+        "Associated revenue": str(revenue),
+        "Due date": str(action.get("dueDate") or "Not supplied"),
+    })
+    evidence = [{
+        "id": "action", "priority": action.get("priority"),
+        "description": action.get("description"), "nextStep": action.get("nextStep"),
+        "owner": action.get("owner"), "dueDate": action.get("dueDate"),
+        "revenueLabel": action.get("revenueLabel"), "revenue": revenue,
+    }]
+    user = G.render(
+        pack,
+        entities=[str(action.get("headline", "")), str(action.get("owner", ""))],
+        evidence=evidence,
+        charts_say=[],
+        untrusted=[str(action.get(k, "")) for k in ("description", "nextStep")],
+        task=("Interpret the action card evidence. Add a practical AI perspective "
+              "for the owner without changing its priority, owner, due date, revenue, "
+              "or prescribed next step."),
+    )
+    try:
+        res = providers.complete(prompts.ACTION_PERSPECTIVE_V1, user, SENTENCES_SCHEMA,
+                                 max_tokens=350, deadline_s=12)
+        clean = G.sanitise(
+            res.obj.get("sentences", []), pack, [],
+            extra=[str(action.get(k, "")) for k in ("description", "nextStep", "dueDate", "formattedRevenueImpact")],
+        )
+        if not clean["sentences"]:
+            return None
+        return {
+            "headline": res.obj.get("headline") or "AI perspective",
+            "sentences": clean["sentences"], "provider": res.provider,
+            "model": res.model, "latencyMs": res.latency_ms,
+            "rejected": clean["rejected"], "dropped": clean["dropped"],
+        }
+    except providers.LLMUnavailable:
+        return None
+
+
+def _executive_action_response(q: str, action: dict) -> dict:
+    """Render fixed action facts plus an optional model-generated perspective."""
+    revenue = action.get("formattedRevenueImpact")
+    revenue_label = action.get("revenueLabel") or "Associated revenue"
+    sentences = [
+        {"text": action["description"], "lens": "cause", "claim": None},
+        {"text": action["nextStep"], "lens": "action", "claim": None},
+    ]
+    if revenue:
+        sentences.insert(1, {
+            "text": f"{revenue_label}: {revenue}.", "lens": "state", "claim": None,
+        })
+    sentences.append({
+        "text": (f"{action['priority']} priority, owned by {action['owner']} and due "
+                 f"{action['dueDate']}: execute the stated next step unless the evidence is "
+                 "disproved. Delegate only when ownership must change; snooze only with a dated follow-up."),
+        "lens": "action", "claim": None,
+    })
+    perspective = _action_ai_perspective(action)
+    return dict(A.jsonable({
+        "question": q,
+        "answer": {"headline": action["headline"], "sentences": sentences},
+        "aiPerspective": perspective,
+        "provider": "hybrid" if perspective else "computed",
+        "degraded": False, "cached": False,
+    }))
+
+
+def _executive_action_answer(q: str, fs: M.FilterState, principal: Principal) -> dict | None:
+    """Bind an executive Ask to its selected server-derived record when possible."""
+    if principal.key != "executive":
+        return None
+
+    from semantic import executive as EXEC
+
+    payload = EXEC.payload(fs, principal)
+    actions = payload["actions"]
+    by_key = {str(action["key"]): action for action in actions}
+    lower = q.casefold()
+
+    # Action Center cards state their server headline verbatim.  The rest of
+    # the prompt is deliberately ignored: it is display context, not evidence.
+    match = re.match(r"^Explain this .+? action:\s*(.+?)\.\s+It is\s",
+                     q.strip(), flags=re.IGNORECASE | re.DOTALL)
+    if match:
+        headline = match.group(1).strip()
+        action = next((item for item in actions if item["headline"] == headline), None)
+        if action is not None:
+            return _executive_action_response(q, action)
+
+    # Every record-level overlay names the selected entity.  Resolve that name
+    # against the freshly built page payload, then follow its action key.  This
+    # prevents generic terms such as "revenue" or "risk" from becoming a book-
+    # wide ranking query instead of an answer about the selected record.
+    record_routes = (
+        ("closure risk for", payload["closureExceptions"], "deal", "closure:"),
+        ("slippage risk for", payload["slippageDeals"], "deal", "slippage:"),
+        ("classified as stagnant", payload["stalledDeals"], "deal", "stalled:"),
+        (" anomaly for ", payload["anomalyFindings"], "entity", "anomaly:"),
+        (" growth play", payload["opportunityPlays"], "offering", "opportunity:"),
+    )
+    for marker, records, field, prefix in record_routes:
+        if marker not in lower:
+            continue
+        selected = next((record for record in records
+                         if (name := str(record.get(field, "")).strip())
+                         and name.casefold() in lower), None)
+        if selected:
+            action = by_key.get(f"{prefix}{selected['key']}")
+            if action is not None:
+                return _executive_action_response(q, action)
+
+    # Brief rows identify an insight, whose action key is the canonical link
+    # to the same record shown on its source page.
+    if lower.startswith("explain the weekly insight"):
+        insight = next((item for item in payload["weeklyInsights"]
+                        if str(item["title"]).casefold() in lower), None)
+        if insight and insight.get("actionKey") in by_key:
+            return _executive_action_response(q, by_key[insight["actionKey"]])
+
+    # The declared-versus-defensible visual is an aggregate, not a record. Its
+    # Ask therefore returns the two actual forecast series rather than routing
+    # through the free-text planner and accidentally naming a largest account.
+    if "declared-versus-defensible revenue visual" in lower:
+        series = payload["closureOverview"]["series"]
+        sentences = [
+            {"text": (f"{row['forecast']}: {row['formattedDeclaredRevenue']} declared; "
+                      f"{row['formattedDefensibleRevenue']} defensible. "
+                      f"{row['formattedScreenedOutRevenue']} falls below the "
+                      f"{row['threshold']:.0%} threshold."),
+             "lens": "answer", "claim": None}
+            for row in series
+        ]
+        weakest = max(series, key=lambda row: float(row.get("screenedOutRevenue") or 0), default=None)
+        if weakest:
+            sentences.append({
+                "text": (f"Start with {weakest['forecast']}: it has the largest screened-out "
+                         "revenue, so validate its buying event and reclassify calls without evidence."),
+                "lens": "action", "claim": None,
+            })
+        return A.jsonable({
+            "question": q,
+            "answer": {"headline": "Declared versus defensible forecast", "sentences": sentences},
+            "provider": "computed", "degraded": False, "cached": False,
+        })
+
+    # Section-level overlays have no single record, but they still must answer
+    # from that section's calculated payload rather than from generic keyword
+    # planning.  Each one names its leading record only after selecting it from
+    # the appropriate, already scoped worklist.
+    overview = payload["anomalyOverview"]
+    if "this week's executive brief" in lower:
+        banner = payload.get("weeklyBanner") or {}
+        insights = payload["weeklyInsights"]
+        return A.jsonable({
+            "question": q,
+            "answer": {"headline": banner.get("headline", "Executive brief"), "sentences": [
+                {"text": banner.get("subline", "No weekly summary is available."), "lens": "answer", "claim": None},
+                *[{"text": f"{item['title']}: {item['nextStep']}", "lens": "action", "claim": None}
+                  for item in insights[:5]],
+            ]}, "provider": "computed", "degraded": False, "cached": False,
+        })
+
+    if "growth-play overview" in lower:
+        overview = payload["opportunityOverview"]
+        lead = payload["opportunityPlays"][0] if payload["opportunityPlays"] else None
+        sentences = [{"text": (f"{overview['recommendations']} source recommendations span "
+                               f"{overview['accounts']} accounts; {overview['repeatablePlays']} are repeatable plays. "
+                               f"Their peer-based revenue benchmark is {overview['formattedPeerRevenueBenchmark']}.") ,
+                      "lens": "answer", "claim": None}]
+        if lead:
+            sentences.append({"text": f"Start with {lead['offering']}: {lead['nextStep']}",
+                              "lens": "action", "claim": None})
+        return A.jsonable({"question": q, "answer": {"headline": "Growth-play overview", "sentences": sentences},
+                           "provider": "computed", "degraded": False, "cached": False})
+
+    if "stagnant pipeline overview" in lower:
+        lead = payload["stalledDeals"][0] if payload["stalledDeals"] else None
+        sentences = [{"text": (f"{overview['stalledDeals']} stagnant deals across {overview['stalledAccounts']} accounts "
+                               f"carry {overview['formattedStalledRevenue']} of associated ACV GP; "
+                               f"{overview['stalledPastDue']} are already past due."),
+                      "lens": "answer", "claim": None}]
+        if lead:
+            sentences.append({"text": f"Start with {lead['deal']}: {lead['nextStep']}",
+                              "lens": "action", "claim": None})
+        return A.jsonable({"question": q, "answer": {"headline": "Stagnant pipeline overview", "sentences": sentences},
+                           "provider": "computed", "degraded": False, "cached": False})
+
+    if "account anomalies affecting" in lower:
+        lead = payload["anomalyFindings"][0] if payload["anomalyFindings"] else None
+        sentences = [{"text": (f"{overview['accountFindings']} account anomalies affect "
+                               f"{overview['accountsAffected']} accounts, including "
+                               f"{overview['criticalAccountFindings']} critical signals."),
+                      "lens": "answer", "claim": None}]
+        if lead:
+            sentences.append({"text": f"Review {lead['entity']} first: {lead['nextStep']}",
+                              "lens": "action", "claim": None})
+        return A.jsonable({"question": q, "answer": {"headline": "Account-anomaly overview", "sentences": sentences},
+                           "provider": "computed", "degraded": False, "cached": False})
+
+    if "slippage overview" in lower:
+        closure = payload["closureOverview"]
+        lead = payload["slippageDeals"][0] if payload["slippageDeals"] else None
+        sentences = [{"text": (f"{closure['stats']['slippedDeals']} deals have moved later, carrying "
+                               f"{closure['formattedSlippageRevenue']} of ACV GP across "
+                               f"{closure['slipEvents']} re-dates and {closure['totalSlipDays']} total slipped days."),
+                      "lens": "answer", "claim": None}]
+        if lead:
+            sentences.append({"text": f"Start with {lead['deal']}: {lead['nextStep']}",
+                              "lens": "action", "claim": None})
+        return A.jsonable({"question": q, "answer": {"headline": "Close-date slippage overview", "sentences": sentences},
+                           "provider": "computed", "degraded": False, "cached": False})
+
+    return None
+
+
 def ask(question: str, fs: M.FilterState, principal: Principal,
         charts_say: list[str], chart_id: str | None = None,
         page: str | None = None) -> dict:
@@ -336,7 +555,6 @@ def ask(question: str, fs: M.FilterState, principal: Principal,
     Nothing here returns "cannot answer right now": a question the data cannot
     answer as asked gets a calm refusal with two questions that work.
     """
-    from ..semantic import answers as A
 
     q = (question or "").strip()
     if not q:
@@ -349,6 +567,10 @@ def ask(question: str, fs: M.FilterState, principal: Principal,
                      chart_id or "", page or "")
     if (hit := _cached(key)):
         return hit
+
+    action_answer = _executive_action_answer(q, fs, principal)
+    if action_answer is not None:
+        return _store(key, action_answer)
 
     # Rung 0 — a question typed beside a chart is about THAT chart. It is
     # answered from the chart's own rows and comes back as words only; see
@@ -506,7 +728,7 @@ def digest(fs: M.FilterState, principal: Principal, days: int = 7) -> dict:
     This is the one surface that is purely `delta`, which is exactly why it can
     never collide with a chart: no chart on any page draws a window this narrow.
     """
-    from ..semantic.loader import AS_OF_TS, movement
+    from semantic.loader import AS_OF_TS, movement
 
     df = M.slice_frame(fs, principal)
     codes = set(df["opportunity_code"])

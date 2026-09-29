@@ -60,7 +60,6 @@ PAGES: dict[str, tuple[str, str, str]] = {
     # Executive
     "tldr": ("executive", "The brief", "Weekly brief"),
     "low-probability": ("executive", "Low probability to close", "Which revenue needs a stronger path to close?"),
-    "slippage-risk": ("executive", "Slippage risk", "Which close dates need to be reset?"),
     "stagnated-deals": ("executive", "Stagnated deals", "Which deals have stopped moving?"),
     "account-anomalies": ("executive", "Account anomalies", "Which account signals warrant investigation?"),
     "opportunities": ("executive", "What's the solution?", "Where to grow"),
@@ -415,10 +414,10 @@ def meta(principal: Principal) -> dict:
         # pod of eleven and an AE's account list offered 357 accounts of which
         # they own a dozen — every other value was a filter to an empty page.
         "dimensions": dimensions,
-        "measures": ([{"key": "revenue", "label": "ACV Revenue", "default": True}]
+        "measures": ([{"key": "revenue", "label": "ACV GP", "default": True}]
                      if principal.key == "executive" else
                      [{"key": "gp", "label": "ACV GP", "default": True},
-                      {"key": "revenue", "label": "ACV Revenue", "default": False}]),
+                      {"key": "revenue", "label": "ACV GP", "default": False}]),
         "data": {
             "lines": int(len(frame)), "opportunities": int(frame["opportunity_code"].nunique()),
             "accounts": int(frame["account_code"].nunique()), "reps": int(frame["owner"].nunique()),

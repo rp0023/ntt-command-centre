@@ -61,7 +61,7 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual([p["key"] for p in meta["pages"]],
                          ["tldr", "closure-risk", "anomalies", "opportunities", "action-center"])
         self.assertEqual({d["key"] for d in meta["dimensions"]}, {"country", "quarter"})
-        self.assertEqual(meta["measures"], [{"key": "revenue", "label": "ACV Revenue", "default": True}])
+        self.assertEqual(meta["measures"], [{"key": "revenue", "label": "ACV GP", "default": True}])
 
         payloads = {}
         forbidden = ("gross profit", "gross-profit", '"gp"', "margin", "budget",
@@ -85,24 +85,20 @@ class AuthFlowTests(unittest.TestCase):
         self.assertTrue(all(b["headline"] and b["subline"]
                             for b in weekly["weeklyBanner"]["supporting"]))
         supporting = {banner["key"]: banner for banner in weekly["weeklyBanner"]["supporting"]}
-        self.assertIn("ACV Revenue is at risk", weekly["weeklyBanner"]["headline"])
-        self.assertIn("stuck in pipeline", weekly["weeklyBanner"]["subline"])
-        self.assertIn("slippage risk", weekly["weeklyBanner"]["subline"])
-        risk = P.risk_table()
-        hot = risk[risk["risk_band"].isin(("High", "Critical"))]
-        stalled = risk[risk["is_stalled"]]
-        slipped = risk[risk["close_date_slips"] > 0]
-        self.assertIn(money(float(hot["acv_revenue"].sum())),
-                      weekly["weeklyBanner"]["headline"])
-        self.assertIn(money(float(stalled["acv_revenue"].sum())),
-                      weekly["weeklyBanner"]["subline"])
-        self.assertIn(money(float(slipped["acv_revenue"].sum())),
-                      weekly["weeklyBanner"]["subline"])
-        self.assertEqual(len(weekly["weeklyInsights"]), 5)
-        self.assertEqual([i["rank"] for i in weekly["weeklyInsights"]], [1, 2, 3, 4, 5])
+        closure = weekly["closureOverview"]
+        anomalies = weekly["anomalyOverview"]
+        opportunities = weekly["opportunityOverview"]
+        self.assertIn(closure["formattedLowProbabilityRevenue"], weekly["weeklyBanner"]["headline"])
+        self.assertIn(str(closure["lowProbabilityDeals"]), weekly["weeklyBanner"]["subline"])
+        self.assertIn(str(anomalies["stalledDeals"]), weekly["weeklyBanner"]["subline"])
+        self.assertIn(closure["formattedLowProbabilityRevenue"], supporting["closure"]["headline"])
+        self.assertIn(anomalies["formattedStalledRevenue"], supporting["anomalies"]["headline"])
+        self.assertIn(opportunities["formattedPeerRevenueBenchmark"], supporting["opportunities"]["headline"])
+        self.assertEqual(len(weekly["weeklyInsights"]), 4)
+        self.assertEqual([i["rank"] for i in weekly["weeklyInsights"]], [1, 2, 3, 4])
         self.assertEqual([i["key"] for i in weekly["weeklyInsights"]], [
-            "weekly:forecast-probability", "weekly:slippage", "weekly:stuck",
-            "weekly:anomaly", "weekly:cross-sell",
+            "weekly:forecast-probability", "weekly:stuck", "weekly:anomaly",
+            "weekly:cross-sell",
         ])
         action_keys = {a["key"] for a in payloads["action-center"]["executive"]["actions"]}
         self.assertEqual(
@@ -163,6 +159,8 @@ class AuthFlowTests(unittest.TestCase):
             & (account_findings["framing"] == "risk")
         ]
         anomaly_overview = payloads["anomalies"]["executive"]["anomalyOverview"]
+        stalled = P.risk_table()
+        stalled = stalled[stalled["is_stalled"]]
         self.assertEqual(anomaly_overview["accountFindings"], len(account_findings))
         self.assertEqual(anomaly_overview["accountsAffected"],
                          account_findings["entity_id"].nunique())

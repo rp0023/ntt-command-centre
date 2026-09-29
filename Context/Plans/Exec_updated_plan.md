@@ -31,7 +31,7 @@ Sales and Manager experiences remain unchanged.
   - Do not display GP-based value-at-stake.
 - **Closure Risk**
   - Show the same Closure Risk message and signals used on Brief.
-  - Present up to ten exceptions with deal, account, owner, risk band, score, closure probability, main driver, close date, silence duration, and ACV Revenue where useful.
+  - Present up to ten exceptions with deal, account, owner, risk band, score, closure probability, main driver, close date, silence duration, and ACV GP where useful.
   - Keep the weak-model disclosure visible and describe the model as directional.
 - **Actions Center**
   - Show actions generated only from Opportunities, Anomalies, and Closure Risk.

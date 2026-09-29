@@ -141,3 +141,15 @@ imperative, no preamble. If the recorded history shows the deal is dead, say so
 and say to close it — a worklist that never says "close this" is one the rep
 stops reading.
 """
+
+
+ACTION_PERSPECTIVE_V1 = _COMMON + """
+
+TASK SHAPE — add an AI perspective to a server-derived action card.
+Write exactly two short sentences. First, explain why the evidence makes this
+worth attention now. Second, say how the owner should approach the next
+conversation: the business hypothesis to test or the proof to obtain. Do not
+repeat the action card's prescribed next step word-for-word. Do not invent a
+customer fact, commitment, date, person, amount, or probability. This is
+interpretation of the supplied evidence, not a new recommendation record.
+"""

@@ -54,7 +54,7 @@ recent explicit statement wins._
    own Excel/Distrbution tab. `NA_Synthetic_SFDC_Opportunities.csv` is kept alongside as
    the same data in flat-file form for tools that don't read `.xlsx`.
 2. **`NA_Synthetic_SFDC_Opportunity_Movement.csv`** (~38,500 rows) — a field-level change
-   log per opportunity (Stage, ForecastCategory, Confidence, ACV Revenue/GP, CloseDate:
+   log per opportunity (Stage, ForecastCategory, Confidence, ACV and GP, CloseDate:
    old value → new value → timestamp → changed by). This is the table the transcript says
    the real anomaly-detection use cases actually run on (stalled deals, backward regression,
    value shrinkage, stage skipping, rep behavioral patterns).
@@ -67,7 +67,7 @@ recent explicit statement wins._
 Checked the synthetic `Opportunities` data's categorical mix (Stage, ForecastCategory, LOB,
 Portfolio) against the input workbook's own "Distrbution" tab — see the `Distribution
 Comparison` sheet. This caught and fixed a real bug: LOB and Portfolio had been sampled
-using the tab's **$ ACV Revenue share** (e.g. VBR = 0.35% of lines) instead of its **# Opp
+using the tab's **$ ACV GP share** (e.g. VBR = 0.35% of lines) instead of its **# Opp
 count share** (VBR is actually ~11.8% of *lines*, just low-value-per-line — high count, low
 revenue, which also explains its 98% GM%). A categorical frequency distribution should
 match record counts, not dollar-weighted share, so this was corrected. Random per-record
@@ -139,7 +139,7 @@ share) — see `LOB_REL_SIZE` / `PORTFOLIO_REL_SIZE` in the generation script.
 
 ## Movement/History table — what's in it
 For each opportunity: a simulated timeline of Stage, ForecastCategory (+ Confidence),
-ACV Revenue/GP, and occasional CloseDate-slip changes from creation to its final recorded
+ACV and GP, and occasional CloseDate-slip changes from creation to its final recorded
 state, attributed to the Opportunity Owner. Amount fields start at `0 → initial estimate`,
 mirroring Praveen's own example ("amount was 0, but it has become 550,000").
 

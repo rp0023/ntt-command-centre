@@ -42,7 +42,7 @@ def setup(path: Path | None = None, sheet: Path | None = None) -> tuple[int, Pat
         definitions.append(dict(id=f"manager-{chr(65+i)}", name=name,
                                 email=f"{slug(name)}@demo.ntt.example", aliases=[],
                                 role="manager", identity=f"pod-{chr(65+i)}"))
-    definitions.append(dict(id="executive-na", name="North America Executive",
+    definitions.append(dict(id="executive-na", name="Vikesh",
                             email="executive.na@demo.ntt.example", aliases=[],
                             role="executive", identity="north-america"))
     existing = {a["id"] for a in registry["accounts"]}

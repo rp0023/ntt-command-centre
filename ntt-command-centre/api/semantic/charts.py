@@ -466,7 +466,7 @@ def margin_mekko(fs: FilterState, principal: Principal) -> dict:
         says=["rev.all.by:lob+portfolio", "gm.all.by:lob+portfolio"],
         subtitle=f"Column width is revenue · fill is margin against the {blended:.1f}% "
                  f"blended rate",
-        measure_label="ACV Revenue",
+        measure_label="ACV GP",
         filter_dims=contextual_filters(principal, "lob", "portfolio"),
         count_basis="lines",
         basis_note="LOB and portfolio vary within an opportunity, so this counts lines.",

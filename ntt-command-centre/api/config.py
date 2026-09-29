@@ -77,6 +77,9 @@ GEMINI_KEYS = [
 ]
 GEMINI_MODEL = os.environ.get("NTT_GEMINI_MODEL", "gemini-3.6-flash")
 
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+DEFAULT_GROQ_MODEL = os.environ.get("DEFAULT_GROQ_MODEL", "openai/gpt-oss-120b").strip()
+
 OPENROUTER_KEY = os.environ.get("NTT_OPENROUTER_KEY", "")
 OPENROUTER_MODEL = os.environ.get("NTT_OPENROUTER_MODEL", "z-ai/glm-5.2:free")
 

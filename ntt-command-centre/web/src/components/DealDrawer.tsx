@@ -374,7 +374,7 @@ function DealFacts({ deal }: { deal: DealDetail }) {
     <section className="dd__section dd__section--facts" aria-label="Deal facts">
       <dl className="dd__facts">
         <Fact label="ACV GP" value={money(deal.acvGp)} />
-        <Fact label="ACV revenue" value={money(deal.acvRevenue)} />
+        <Fact label="ACV GP" value={money(deal.acvRevenue)} />
         <Fact label="Close date" value={when(deal.closeDate)} />
         <Fact label="Stage" value={deal.stage} />
         <Fact label="LOB" value={deal.lob} />

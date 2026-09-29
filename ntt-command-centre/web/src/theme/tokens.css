@@ -52,6 +52,12 @@
   --good: #1fb6a6;
   --good-rgb: 31, 182, 166;
 
+  /* Use-case colours are intentionally distinct from the red/amber/teal
+     severity palette above. They identify a workspace area, not urgency. */
+  --usecase-closure: #a78bfa;
+  --usecase-anomaly: #38bdf8;
+  --usecase-growth: #f472b6;
+
   --muted: #8b96a8;
   --muted-rgb: 139, 150, 168;
 
@@ -117,6 +123,10 @@
 
   --good: #0f766e;
   --good-rgb: 15, 118, 110;
+
+  --usecase-closure: #6d28d9;
+  --usecase-anomaly: #0369a1;
+  --usecase-growth: #be185d;
 
   --muted: #55606f;
   --muted-rgb: 85, 96, 111;

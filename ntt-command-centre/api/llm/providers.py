@@ -1,5 +1,5 @@
 """
-LLM transport: Claude first (when a key is configured), then Gemini, then
+LLM transport: Claude first (when a key is configured), then Gemini, Groq,
 OpenRouter, then the computed template.
 
 Claude goes first because it is the one provider with a real quota behind it.
@@ -41,13 +41,21 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 
-import anthropic
+try:
+    import anthropic
+except ImportError:
+    # Claude is an optional provider in a chain that also supports Gemini,
+    # Groq and OpenRouter.  Do not prevent the entire LLM layer from starting
+    # merely because this SDK is absent in a lightweight deployment.
+    anthropic = None  # type: ignore[assignment]
 
 from config import (
     ANTHROPIC_KEY,
     ANTHROPIC_MODEL,
     GEMINI_KEYS,
     GEMINI_MODEL,
+    GROQ_API_KEY,
+    DEFAULT_GROQ_MODEL,
     LLM_ENABLED,
     LLM_TIMEOUT_S,
     OPENROUTER_KEY,
@@ -55,6 +63,7 @@ from config import (
 )
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 #: OpenRouter's documented free model has been observed routing to a provider
@@ -233,6 +242,29 @@ def _gemini(system: str, user: str, schema: dict, max_tokens: int,
     return json.loads(text)
 
 
+def _groq(system: str, user: str, schema: dict, max_tokens: int,
+          temperature: float, timeout: float) -> dict:
+    payload = {
+        "model": DEFAULT_GROQ_MODEL,
+        "messages": [{"role": "system", "content": system},
+                     {"role": "user", "content": user}],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "response_format": {"type": "json_object"},
+    }
+    d = _post(GROQ_URL, payload, {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+    }, timeout)
+    if d.get("error"):
+        error = d["error"]
+        raise LLMUnavailable(f"groq: {error.get('message', error)}")
+    msg = ((d.get("choices") or [{}])[0].get("message") or {})
+    content = msg.get("content")
+    if not content:
+        raise LLMUnavailable("groq returned a null body")
+    return json.loads(content)
+
+
 def _openrouter(system: str, user: str, schema: dict, max_tokens: int,
                 temperature: float, timeout: float) -> dict:
     payload = {
@@ -280,7 +312,7 @@ def complete(system: str, user: str, schema: dict, *, max_tokens: int = 900,
 
     # Claude first: one attempt, no waiting. A 429 or a network fault simply
     # hands the call to the free providers below within the same deadline.
-    if ANTHROPIC_KEY and left() > 1.0:
+    if ANTHROPIC_KEY and anthropic is not None and left() > 1.0:
         t0 = time.monotonic()
         try:
             obj = _anthropic(system, user, schema, max_tokens, min(left(), 30.0))
@@ -345,6 +377,21 @@ def complete(system: str, user: str, schema: dict, *, max_tokens: int = 900,
                              "outcome": f"retry: {type(e).__name__}: {str(e)[:90]}"})
             break
 
+    if GROQ_API_KEY and left() > 1.0:
+        t0 = time.monotonic()
+        try:
+            obj = _groq(system, user, schema, max_tokens, temperature,
+                        min(left(), 25.0))
+            ms = int((time.monotonic() - t0) * 1000)
+            attempts.append({"provider": "groq", "ms": ms, "outcome": "ok"})
+            return LLMResult(obj, "groq", DEFAULT_GROQ_MODEL, ms,
+                             attempts=attempts)
+        except (RateLimited, urllib.error.URLError, OSError, ValueError, KeyError,
+                LLMUnavailable, TimeoutError) as e:
+            attempts.append({"provider": "groq",
+                             "ms": int((time.monotonic() - t0) * 1000),
+                             "outcome": f"{type(e).__name__}: {str(e)[:120]}"})
+
     if OPENROUTER_KEY and left() > 1.0:
         t0 = time.monotonic()
         try:
@@ -388,17 +435,20 @@ def health() -> dict:
     # `enabled: true` there had monitoring believe the AI was live while every
     # card was rendering degraded. The configured providers are listed in the
     # order the chain tries them.
-    configured = [name for name, ok in (("anthropic", bool(ANTHROPIC_KEY)),
+    configured = [name for name, ok in (("anthropic", bool(ANTHROPIC_KEY and anthropic is not None)),
                                         ("gemini", bool(GEMINI_KEYS)),
+                                        ("groq", bool(GROQ_API_KEY)),
                                         ("openrouter", bool(OPENROUTER_KEY))) if ok]
     return {
         "enabled": bool(LLM_ENABLED and configured),
         "flag": LLM_ENABLED,
         "providersConfigured": configured,
-        "anthropicConfigured": bool(ANTHROPIC_KEY),
+        "anthropicConfigured": bool(ANTHROPIC_KEY and anthropic is not None),
         "anthropicModel": ANTHROPIC_MODEL,
         "geminiKeys": len(GEMINI_KEYS),
         "geminiModel": GEMINI_MODEL,
+        "groqConfigured": bool(GROQ_API_KEY),
+        "groqModel": DEFAULT_GROQ_MODEL,
         "openrouterModel": OPENROUTER_MODEL,
         "openrouterConfigured": bool(OPENROUTER_KEY),
         "timeoutSeconds": LLM_TIMEOUT_S,

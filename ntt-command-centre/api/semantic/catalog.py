@@ -239,7 +239,7 @@ def measures_catalog() -> list[dict]:
         {"name": "gp", "label": "ACV GP", "formula": "SUM(acv_gp)",
          "pandas": "df['acv_gp'].sum()", "default": True,
          "note": "The default measure. Budget, targets and severity are all in GP."},
-        {"name": "revenue", "label": "ACV Revenue", "formula": "SUM(acv_revenue)",
+        {"name": "revenue", "label": "ACV GP", "formula": "SUM(acv_revenue)",
          "pandas": "df['acv_revenue'].sum()"},
         {"name": "gm", "label": "Gross margin %", "formula": "100 * SUM(acv_gp) / SUM(acv_revenue)",
          "pandas": "100 * df['acv_gp'].sum() / df['acv_revenue'].sum()",

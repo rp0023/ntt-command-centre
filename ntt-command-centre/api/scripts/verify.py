@@ -89,7 +89,7 @@ def main() -> int:
 
     print("\n── MEASURES ─────────────────────────────────────────────────────────")
     m = M.measures(fs, exec_p)
-    check("total ACV revenue ($M)", round(m["total"]["revenue"] / 1e6, 2), 58.85)
+    check("total ACV GP ($M)", round(m["total"]["revenue"] / 1e6, 2), 58.85)
     check("total ACV GP ($M)", round(m["total"]["gp"] / 1e6, 2), 9.55)
     check("blended GM %", round(m["blendedGm"], 2), 16.23)
     check("open lines", m["open"]["lines"], 350)

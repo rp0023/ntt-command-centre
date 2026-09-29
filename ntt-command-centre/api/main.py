@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import cast
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
@@ -350,11 +349,6 @@ def api_brief(request: Request, page: str = Query(default="")) -> dict:
     p = _principal(request)
     fs = _filters(request)
     page = V.resolve_page(page or p.persona.home, p)
-    if p.key == "executive":
-        messages = EXEC.payload(fs, p)["messages"]
-        return {"headline": "Three signals need leadership attention",
-                "sentences": [{"text": m["summary"], "lens": "answer", "claim": None}
-                              for m in messages], "provider": "computed", "degraded": False}
     # The server recomputes what is on screen and unions it with the client's
     # claim, so a stale client cannot unlock a redundant answer.
     server_says = [s for c in V.charts_for(page, fs, p) for s in c["says"]]
@@ -372,42 +366,6 @@ def api_ask(request: Request, q: str = Query(..., min_length=2, max_length=400),
     client's copy of it is never trusted — and the answer is words only.
     """
     p = _principal(request)
-    if p.key == "executive":
-        suggestions = ["Which commitments have the highest closure risk?",
-                       "Which opportunities are ready to pilot?"]
-        if re.search(r"\b(gp|gross[- ]?profit|profit|margin|budget|coverage|plan gap)\b", q, re.I):
-            return {"question": q, "refused": True, "degraded": False, "provider": "computed",
-                    "answer": {"headline": "That measure is outside the Executive experience",
-                               "sentences": [{"text": "Ask about opportunities, anomalies, closure risk, actions, or revenue tied to a closure decision.",
-                                              "lens": "answer", "claim": None}]},
-                    "suggestions": suggestions}
-        focused = EXEC.payload(_filters(request), p)
-        lower = q.lower()
-        if re.search(r"opportun|play|pilot", lower):
-            message = focused["messages"][0]
-            detail = (focused["opportunityPlays"][0]["nextStep"]
-                      if focused["opportunityPlays"] else "No pilot is ready in this scope.")
-        elif re.search(r"anomal|finding|unusual|investig", lower):
-            message = focused["messages"][1]
-            detail = (focused["anomalyFindings"][0]["question"]
-                      if focused["anomalyFindings"] else "No finding needs investigation in this scope.")
-        elif re.search(r"clos|risk|deal|commit", lower):
-            message = focused["messages"][2]
-            detail = (focused["closureExceptions"][0]["mainDriver"]
-                      if focused["closureExceptions"] else "No commitment needs review in this scope.")
-        elif re.search(r"action|owner|due|waiting", lower):
-            message = {"headline": "The Actions Center holds the current decisions",
-                       "summary": f"{len(focused['actions'])} actions are currently available."}
-            detail = focused["actions"][0]["nextStep"] if focused["actions"] else "No action is waiting."
-        else:
-            message = {"headline": "Three signals define the Executive brief",
-                       "summary": " ".join(m["summary"] for m in focused["messages"])}
-            detail = "Open a focused tab to inspect its ranked worklist."
-        return {"question": q, "refused": False, "degraded": False, "provider": "computed",
-                "answer": {"headline": message["headline"],
-                           "sentences": [{"text": message["summary"], "lens": "answer", "claim": None},
-                                         {"text": detail, "lens": "action", "claim": None}]},
-                "suggestions": suggestions}
     return AI.ask(q, _filters(request), p, _charts_say(request), chart_id=chart, page=page)
 
 

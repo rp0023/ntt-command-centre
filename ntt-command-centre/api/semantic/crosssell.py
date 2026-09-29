@@ -34,7 +34,7 @@ import re
 
 import pandas as pd
 
-from .loader import LOB_ORDER, cross_sell_raw, facts
+from .loader import cross_sell_raw
 from .measures import FilterState, slice_frame
 from .personas import Principal
 
@@ -120,22 +120,10 @@ def recommendations() -> pd.DataFrame:
     df["holds_lobs"] = df["holds"].map(
         lambda ps: sorted({p.split("/")[0].strip() for p in ps}))
 
-    # The owner of the account's largest line, which is how every other surface
-    # in this layer decides who "owns" an account.
-    f = facts()
-    owner = (f.groupby(["account_code", "owner"])["acv_gp"].sum()
-             .reset_index().sort_values("acv_gp", ascending=False)
-             .drop_duplicates("account_code").set_index("account_code")["owner"])
-    df["owner"] = df["account_code"].map(owner).fillna("Unassigned")
+    # The source export does not include ownership. Do not infer it from a
+    # second dataset.
+    df["owner"] = "Not provided in source"
     return df
-
-
-@functools.lru_cache(maxsize=1)
-def _native_missing() -> dict[str, set[str]]:
-    """Per account, the whole LOBs this layer's own view says are absent."""
-    f = facts()
-    held = f.groupby("account_code")["lob"].agg(lambda s: set(s.dropna()))
-    return {code: set(LOB_ORDER) - lobs for code, lobs in held.items()}
 
 
 def unified(fs: FilterState, principal: Principal, limit: int = 60) -> list[dict]:
@@ -174,11 +162,8 @@ def unified(fs: FilterState, principal: Principal, limit: int = 60) -> list[dict
                 .reset_index().sort_values("acv_gp", ascending=False)
                 .drop_duplicates("account_code").set_index("account_code")["owner"])
 
-    native = _native_missing()
     out: list[dict] = []
     for r in df.itertuples(index=False):
-        missing_lobs = native.get(r.account_code, set())
-        corroborated = r.rec_lob in missing_lobs
         out.append({
             "id": r.recommendation_id,
             "accountCode": r.account_code,
@@ -202,9 +187,9 @@ def unified(fs: FilterState, principal: Principal, limit: int = 60) -> list[dict
             # Whole LOB the account does not buy at all, versus a new service
             # inside an LOB it already buys. Different conversation, different
             # person, and the card says which.
-            "kind": "new line of business" if corroborated else "more of what they buy",
-            "corroborated": bool(corroborated),
-            "source": "both" if corroborated else "data science",
+            "kind": "source recommendation",
+            "corroborated": False,
+            "source": "data science",
             "caveat": CAVEAT,
             "framing": "opportunity",
         })
@@ -282,7 +267,6 @@ def for_account(account_code: str) -> list[dict]:
     """Every recommendation for one account, for the account drawer."""
     df = recommendations()
     rows = df[df["account_code"] == account_code]
-    native = _native_missing().get(account_code, set())
     out = []
     for r in rows.itertuples(index=False):
         out.append({
@@ -297,7 +281,7 @@ def for_account(account_code: str) -> list[dict]:
             "peerGp": float(r.peer_won_gp),
             "peerRevenue": float(r.peer_won_revenue),
             "accountGp": float(r.account_won_gp),
-            "corroborated": r.rec_lob in native,
+            "corroborated": False,
             "caveat": CAVEAT,
         })
     out.sort(key=lambda r: -CONFIDENCE_RANK.get(r["confidence"], 0))
@@ -322,7 +306,9 @@ def summary(fs: FilterState, principal: Principal) -> dict:
         "peerWonRevenueMedian": float(pd.Series(peer_revenues).median()) if peer_revenues else None,
         "repeatableRecommendations": repeatable_recommendations,
         "singleAccountRecommendations": len(recs) - repeatable_recommendations,
-        "peerRevenueBenchmark": float(sum(t["peerRevenueBenchmark"] for t in th)),
+        # Every exported recommendation contributes once. Do not exclude
+        # single-account offerings merely because they are not a grouped theme.
+        "peerRevenueBenchmark": float(sum(peer_revenues)),
         "allPeerRevenueBenchmark": float(sum(peer_revenues)),
         "topTheme": th[0]["offering"] if th else "",
         "topThemeAccounts": th[0]["accounts"] if th else 0,
@@ -332,5 +318,5 @@ def summary(fs: FilterState, principal: Principal) -> dict:
 
 
 def reset_caches() -> None:
-    for fn in (recommendations, _native_missing):
+    for fn in (recommendations,):
         fn.cache_clear()

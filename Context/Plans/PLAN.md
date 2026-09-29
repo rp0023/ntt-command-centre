@@ -24,7 +24,7 @@ Use a clean, light NTT login design. After login, automatically open the user’
 | Tomás Oliveira | `tomas.oliveira@demo.ntt.example` | Manager — Pod D | My team |
 | Hannah Brecht | `hannah.brecht@demo.ntt.example` | Manager — Pod E | My team |
 | Kenji Nakamura | `kenji.nakamura@demo.ntt.example` | Manager — Pod F | My team |
-| North America Executive | `executive.na@demo.ntt.example` | Executive — North America | Brief |
+| Vikesh | `executive.na@demo.ntt.example` | Executive — North America | Brief |
 
 - Brian is the current default Sales identity, with 37 open opportunities.
 - Karen, Melissa and Scott are the next three reps ranked by open-opportunity count (14, 11 and 9 respectively in the current source dataset), providing active books for the walkthrough. Their names and emails come from the existing opportunity roster.

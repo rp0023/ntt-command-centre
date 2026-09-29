@@ -15,7 +15,7 @@ Emails at demo.ntt.example are demo identifiers, not mailboxes.
 | Tomás Oliveira | `tomas.oliveira@demo.ntt.example` | `30csYpN5aE2FOZy0hDpaHMqZ` | manager | pod-D |
 | Hannah Brecht | `hannah.brecht@demo.ntt.example` | `eIh5QgZvVs0BwLuLan4U27Dx` | manager | pod-E |
 | Kenji Nakamura | `kenji.nakamura@demo.ntt.example` | `OBH4iw3ZrY7gv4VfwkOe95Lv` | manager | pod-F |
-| North America Executive | `executive.na@demo.ntt.example` | `z5OeYaQqvJWWh342YipOysYM` | executive | north-america |
+| Vikesh | `executive.na@demo.ntt.example` | `z5OeYaQqvJWWh342YipOysYM` | executive | north-america |
 | Amanda Collins | `amanda.collins@global.ntt` | `mF8-_oUcT_l9gSmNke9BelnB` | ae | Amanda Collins |
 | Amanda Morris | `amanda.morris@global.ntt` | `nFjH2AK6VCmjeJxxjhYaCeqR` | ae | Amanda Morris |
 | Amanda Sanchez | `amanda.sanchez@global.ntt` | `AUyWOJK9P_hef4wPhGlrLhD7` | ae | Amanda Sanchez |

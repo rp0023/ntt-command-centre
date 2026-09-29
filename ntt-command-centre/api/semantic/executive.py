@@ -89,8 +89,8 @@ def _opportunities(fs: FilterState, principal: Principal) -> tuple[dict, list[di
             money(summary["peerWonRevenueMedian"])
             if summary["peerWonRevenueMedian"] is not None else "—"
         ),
-        "peerRevenueBenchmark": float(summary["peerRevenueBenchmark"]),
-        "formattedPeerRevenueBenchmark": money(float(summary["peerRevenueBenchmark"])),
+        "peerRevenueBenchmark": float(summary["allPeerRevenueBenchmark"]),
+        "formattedPeerRevenueBenchmark": money(float(summary["allPeerRevenueBenchmark"])),
     }
     return message, plays, overview
 
@@ -98,12 +98,12 @@ def _opportunities(fs: FilterState, principal: Principal) -> tuple[dict, list[di
 def _anomalies(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], dict, list[dict]]:
     frame = ANOM.scoped(ANOM.for_persona("executive"), fs, principal)
     if not frame.empty:
-        # Keep account risks here; account whitespace and portfolio-mix ideas
-        # belong on What's the solution? and would duplicate its worklist.
-        # Individual text fields are scrubbed below so profit wording from the
-        # source finding never reaches the Executive payload.
+        # Render every risk finding routed to Executive from the supplied Client
+        # Anomaly Report. Restricting this to Account grain discarded the
+        # report's Industry, Rep and Segment findings before the page could show
+        # them. Cross-sell findings remain on the Opportunities page.
         frame = frame.loc[
-            frame["entity_type"].eq("Account") & frame["framing"].eq("risk")
+            frame["framing"].eq("risk") & frame["provenance"].eq("ds-model")
         ].copy()
         # Mirror the workbook's strong-example rule: source-curated demo
         # priorities first, then severity. Triage remains the final tie-break.
@@ -114,20 +114,31 @@ def _anomalies(fs: FilterState, principal: Principal) -> tuple[dict, list[dict],
     entities = int(frame["entity_id"].nunique()) if not frame.empty else 0
     risk = P.risk_table()
     codes = set(slice_frame(fs, principal)["opportunity_code"])
-    stalled = risk[risk["opportunity_code"].isin(codes) & risk["is_stalled"]].copy()
-    stalled = stalled.sort_values(["quiet_days", "risk_score"], ascending=[False, False])
+    # The Stagnant Deals page is a rendering of the supplied Client Anomaly
+    # Report, not a second, broader inactivity detector.  The report contains
+    # 103 `stalled_pipeline` opportunity findings in its unfiltered NA scope.
     source_stalls = ANOM.enriched()
     source_stalls = source_stalls.loc[
         source_stalls["entity_type"].eq("Opportunity")
         & source_stalls["anomaly_type"].eq("stalled_pipeline")
-    ].drop_duplicates("entity_id").set_index("entity_id")
+        & source_stalls["provenance"].eq("ds-model")
+    ].copy()
+    source_stalls = ANOM.scoped(source_stalls, fs, principal)
+    source_stalls["entity_id"] = source_stalls["entity_id"].astype(str)
+    stalled_codes = set(source_stalls["entity_id"])
+    stalled = risk[
+        risk["opportunity_code"].astype(str).isin(stalled_codes)
+        & risk["opportunity_code"].isin(codes)
+    ].copy()
+    stalled = stalled.sort_values(["quiet_days", "risk_score"], ascending=[False, False])
+    source_stalls = source_stalls.drop_duplicates("entity_id").set_index("entity_id")
     stalled_accounts = int(stalled["account_name"].nunique()) if len(stalled) else 0
     stalled_past_due = int(stalled["is_past_due"].sum()) if len(stalled) else 0
     longest_silence = int(stalled["quiet_days"].max()) if len(stalled) else 0
     stalled_revenue = float(stalled["acv_revenue"].sum()) if len(stalled) else 0.0
-    account_codes = set(frame["entity_id"].astype(str)) if not frame.empty else set()
-    account_revenue = float(risk[risk["account_code"].astype(str).isin(account_codes)]["acv_revenue"].sum()) if account_codes else 0.0
-    account_revenue_by_code = risk.groupby(risk["account_code"].astype(str))["acv_revenue"].sum()
+    # DealValue in the Client Anomaly Report is already the source-provided GP
+    # value at stake. Do not replace it with a derived account-book total.
+    account_revenue = float(frame["value_at_stake"].sum()) if not frame.empty else 0.0
     stagnation_bands = []
     for label, minimum, maximum in (
         ("60–90 days", 60, 90),
@@ -168,7 +179,7 @@ def _anomalies(fs: FilterState, principal: Principal) -> tuple[dict, list[dict],
     }
     findings = []
     for row in frame.itertuples(index=False):
-        finding_revenue = float(account_revenue_by_code.get(str(row.entity_id), 0.0))
+        finding_revenue = float(row.value_at_stake)
         findings.append({
             "key": str(row.anomaly_id), "severity": str(row.priority),
             "entityId": str(row.entity_id),
@@ -183,8 +194,8 @@ def _anomalies(fs: FilterState, principal: Principal) -> tuple[dict, list[dict],
         })
     stalled_rows = []
     for row in stalled.itertuples(index=False):
-        source = (source_stalls.loc[row.opportunity_code]
-                  if row.opportunity_code in source_stalls.index else None)
+        source = (source_stalls.loc[str(row.opportunity_code)]
+                  if str(row.opportunity_code) in source_stalls.index else None)
         source_evidence = (_safe_text(source["evidence"], "") if source is not None else "")
         source_action = (_safe_text(source["recommended_action"], "")
                          if source is not None else "")
@@ -339,18 +350,18 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
         if bool(row.went_backwards):
             deterioration.append("stage moved backwards")
         if bool(row.shrank):
-            deterioration.append(f"deal value fell {abs(float(row.value_drift)):.0%}")
+            deterioration.append(f"deal value fell {row.value_drift}")
         if bool(row.is_past_due):
             deterioration.append(f"{row.days_past_due} days past due")
         if not deterioration and bool(row.is_stalled):
             deterioration.append(f"no material movement for {row.quiet_days} days")
         account_cycle_days = (
-            int(round(row.account_cycle_days))
+            row.account_cycle_days
             if row.account_cycle_sample_size >= 3 and row.fiscal_quarter == target_quarter
             else None
         )
         account_cycle_gap_days = (
-            int(round(row.account_cycle_gap_days))
+            row.account_cycle_gap_days
             if row.account_cycle_mismatch else 0
         )
         account_cycle_context = None
@@ -358,7 +369,7 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             account_cycle_context = (
                 f"{row.account_cycle_sample_size} prior closed deals at this account had a "
                 f"median {account_cycle_days}-day cycle. This deal's planned close implies "
-                f"{int(row.planned_cycle_days)} total days"
+                f"{row.planned_cycle_days} total days"
                 + (f", {account_cycle_gap_days} days shorter than that median."
                    if row.account_cycle_mismatch else ".")
             )
@@ -367,7 +378,7 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             "account": str(row.account_name), "owner": str(row.owner), "stage": str(row.stage),
             "forecastCategory": str(row.forecast_category),
             "riskBand": str(row.risk_band), "riskScore": row.risk_score,
-            "riskBucket": (int(row.risk_bucket)
+            "riskBucket": (row.risk_bucket
                             if pd.notna(row.risk_bucket) else None),
             "riskBucketLabel": (_safe_text(row.risk_bucket_label, "Unknown")
                                 if isinstance(row.risk_bucket_label, str) else "Unknown"),
@@ -375,8 +386,8 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             "closeDate": row.close_date.date().isoformat() if not pd.isna(row.close_date) else None,
             "silenceDays": row.quiet_days if not pd.isna(row.quiet_days) else None,
             "accountCycleDays": account_cycle_days,
-            "accountCycleSampleSize": int(row.account_cycle_sample_size),
-            "plannedCycleDays": int(row.planned_cycle_days) if account_cycle_days is not None else None,
+            "accountCycleSampleSize": row.account_cycle_sample_size,
+            "plannedCycleDays": row.planned_cycle_days if account_cycle_days is not None else None,
             "accountCycleGapDays": account_cycle_gap_days,
             "accountCycleMismatch": bool(row.account_cycle_mismatch),
             "accountCycleContext": account_cycle_context,
@@ -384,7 +395,7 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             "closeDateSlips": row.close_date_slips or 0,
             "slipDays": row.slip_days or 0,
             "deterioration": "; ".join(deterioration) if deterioration else "No deterioration signal detected",
-            "revenue": float(row.acv_revenue), "formattedRevenue": money(float(row.acv_revenue)),
+            "revenue": row.acv_revenue, "formattedRevenue": row.acv_revenue,
         })
 
     # Slippage is a movement-log use case, not a model-risk use case. Include
@@ -417,16 +428,16 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             "line": portfolio or lob,
             "owner": str(row.owner),
             "accountOwner": str(row.account_owner),
-            "revenue": float(row.acv_revenue),
-            "formattedRevenue": money(float(row.acv_revenue)),
+            "revenue": row.acv_revenue,
+            "formattedRevenue": row.acv_revenue,
             "forecastCategory": str(row.forecast_category),
             "riskBand": str(row.risk_band),
             "evidence": evidence or None,
             "nextStep": next_step or None,
             "priority": str(source["priority"]) if source is not None else None,
-            "closeDateSlips": int(row.close_date_slips),
-            "slipDays": int(row.slip_days),
-            "pastDueDays": int(row.days_past_due),
+            "closeDateSlips": row.close_date_slips,
+            "slipDays": row.slip_days,
+            "pastDueDays": row.days_past_due,
             "closeDate": row.close_date.date().isoformat() if not pd.isna(row.close_date) else None,
         })
     model = DS.model_card() if DS.available() else DS.unavailable_card()
@@ -445,8 +456,8 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
         declared = risk[risk["forecast_category"] == forecast]
         scored = declared[declared["closure_probability"].notna()]
         defensible = scored[scored["closure_probability"] >= threshold]
-        declared_revenue = float(declared["acv_revenue"].sum())
-        defensible_revenue = (float(defensible["acv_revenue"].sum())
+        declared_revenue = declared["acv_revenue"].sum()
+        defensible_revenue = (defensible["acv_revenue"].sum()
                               if len(scored) else None)
         screened_out = (declared_revenue - defensible_revenue
                         if defensible_revenue is not None else None)
@@ -520,8 +531,8 @@ def _actions(plays: list[dict], findings: list[dict], stalled_deals: list[dict],
             "sourcePage": "account-anomalies",
             "revenueImpact": finding["revenue"],
             "formattedRevenueImpact": finding["formattedRevenue"],
-            "revenueLabel": "Open ACV Revenue at this account",
-            "revenueBasis": "account_book_acv",
+            "revenueLabel": "ACV GP at stake (Client Anomaly Report)",
+            "revenueBasis": "anomaly_report",
             "revenueEntityKey": finding["entityId"],
             "options": _options("anomalies"),
         })
@@ -535,7 +546,7 @@ def _actions(plays: list[dict], findings: list[dict], stalled_deals: list[dict],
             "sourcePage": "stagnated-deals",
             "revenueImpact": deal["dealValue"],
             "formattedRevenueImpact": deal["dealValueLabel"],
-            "revenueLabel": "Associated ACV Revenue",
+            "revenueLabel": "Associated ACV GP",
             "revenueBasis": "deal_acv",
             "revenueEntityKey": deal["key"],
             "options": _options("anomalies"),
@@ -562,7 +573,7 @@ def _actions(plays: list[dict], findings: list[dict], stalled_deals: list[dict],
             "nextStep": next_step,
             "sourcePage": "low-probability",
             "revenueImpact": deal["revenue"], "formattedRevenueImpact": deal["formattedRevenue"],
-            "revenueLabel": "Associated ACV Revenue",
+            "revenueLabel": "Associated ACV GP",
             "revenueBasis": "deal_acv", "revenueEntityKey": deal["key"],
             "options": _options("closure"),
         })
@@ -583,7 +594,7 @@ def _actions(plays: list[dict], findings: list[dict], stalled_deals: list[dict],
             "sourcePage": "slippage-risk",
             "revenueImpact": deal["revenue"],
             "formattedRevenueImpact": deal["formattedRevenue"],
-            "revenueLabel": "Associated ACV Revenue",
+            "revenueLabel": "Associated ACV GP",
             "revenueBasis": "deal_acv", "revenueEntityKey": deal["key"],
             "options": _options("closure"),
         })
@@ -617,71 +628,42 @@ def _action_overview(actions: list[dict]) -> dict:
     }
 
 
-def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
-                  closures: list[dict], stalled_deals: list[dict],
-                  slippage_deals: list[dict], plays: list[dict],
+def _weekly_focus(findings: list[dict], closures: list[dict],
+                  stalled_deals: list[dict], plays: list[dict],
                   opportunity_overview: dict, anomaly_overview: dict,
                   closure_overview: dict) -> tuple[dict, list[dict]]:
-    """The five decisions worth leadership time this week.
+    """Assemble the Brief from the same detail-page summaries and worklists.
 
-    Selection follows the accompanying Top10 workbook: absolute probability
-    for closure (never the misleading relative bucket), multi-method confidence
-    for expansion, and source demo-priority plus severity for anomalies.
+    The Brief is a navigation and prioritisation layer, not another metrics
+    model. Every metric therefore comes from the page payloads, which are
+    sourced from the approved Data Science inputs.
     """
-    risk = P.risk_table()
-    codes = set(slice_frame(fs, principal)["opportunity_code"])
-    risk = risk[risk["opportunity_code"].isin(codes)].copy()
-    hot = risk[risk["risk_band"].isin(("High", "Critical"))]
-    past_due = risk[risk["is_past_due"]]
-    stalled = risk[risk["is_stalled"]]
-    slipped = risk[risk["close_date_slips"] > 0]
-
-    scored = pd.DataFrame()
-    if DS.available():
-        scored = DS.predictions()
-        scored = scored[scored["opportunity_code"].isin(codes)].copy()
-        if "is_open_in_model" in scored.columns:
-            scored = scored[scored["is_open_in_model"]]
-        scored = scored.drop_duplicates("opportunity_code")
-        scored["p_win"] = pd.to_numeric(scored["p_win"], errors="coerce")
-        scored = scored.dropna(subset=["p_win"]).sort_values("p_win", ascending=False)
-
-    clears_half = int((scored["p_win"] >= .5).sum()) if len(scored) else 0
-    commit_low = scored[(scored["forecast_at_cutoff"] == "Commit") & (scored["p_win"] < .5)]
-    best_case_low = scored[(scored["forecast_at_cutoff"] == "Best Case") & (scored["p_win"] < .5)]
-    hot_revenue = float(hot["acv_revenue"].sum()) if len(hot) else 0.0
-    open_revenue = float(risk["acv_revenue"].sum()) if len(risk) else 0.0
-    stalled_revenue = float(stalled["acv_revenue"].sum()) if len(stalled) else 0.0
-    slipped_revenue = float(slipped["acv_revenue"].sum()) if len(slipped) else 0.0
-    commit_low_revenue = float(risk[risk["opportunity_code"].isin(
-        set(commit_low["opportunity_code"]))]["acv_revenue"].sum())
-    best_case_low_revenue = float(risk[risk["opportunity_code"].isin(
-        set(best_case_low["opportunity_code"]))]["acv_revenue"].sum())
-    region_label = "NA region" if "north america" in principal.identity_label.lower() else principal.identity_label
-    stalled_days = int(stalled["quiet_days"].max()) if len(stalled) else 60
     banner = {
-        "tone": "danger" if len(hot) else "accent",
-        "headline": f"{money(hot_revenue)} ACV Revenue is at risk for {region_label}",
+        "tone": "danger" if closure_overview["lowProbabilityDeals"] else "accent",
+        "headline": (f"{closure_overview['formattedLowProbabilityRevenue']} ACV GP "
+                     "is below 50% probability"),
         "subline": (
-            f"{count(len(stalled))} deals ({money(stalled_revenue)}) stuck in pipeline for >{stalled_days} days. "
-            f"{count(len(slipped))} deals ({money(slipped_revenue)}) with major slippage risk"
+            f"{count(closure_overview['lowProbabilityDeals'])} open deals need a stronger path to close. "
+            f"{count(anomaly_overview['stalledDeals'])} stagnant deals across "
+            f"{count(anomaly_overview['stalledAccounts'])} accounts need review."
         ),
         "stats": [
-            {"label": "Open pipeline", "value": money(open_revenue), "tone": "accent"},
-            {"label": "At risk", "value": money(hot_revenue), "tone": "danger"},
-            {"label": "Past due", "value": count(len(past_due)), "tone": "warn"},
+            {"label": "Open deals", "value": count(closure_overview["stats"]["openDeals"]), "tone": "accent"},
+            {"label": "Below 50%", "value": count(closure_overview["lowProbabilityDeals"]), "tone": "danger"},
+            {"label": "Stagnant deals", "value": count(anomaly_overview["stalledDeals"]), "tone": "warn"},
         ],
         "supporting": [
             {
                 "key": "closure", "tone": "danger", "label": "Deal closure likelihood",
-                "headline": f"{money(hot_revenue)} ACV Revenue at risk",
-                "subline": (f"{count(len(commit_low))} Commit and {count(len(best_case_low))} Best Case "
-                            "deals sit below 50% probability."),
+                "headline": (f"{closure_overview['formattedLowProbabilityRevenue']} ACV GP "
+                             "below 50% probability"),
+                "subline": (f"{count(closure_overview['lowProbabilityDeals'])} open deals "
+                            "are below 50% model probability."),
                 "page": "low-probability",
             },
             {
                 "key": "anomalies", "tone": "warn", "label": "Anomaly detection",
-                "headline": (f"{anomaly_overview['formattedStalledRevenue']} ACV Revenue "
+                "headline": (f"{anomaly_overview['formattedStalledRevenue']} ACV GP "
                              "on stagnant deals"),
                 "subline": (f"{count(anomaly_overview['stalledDeals'])} stagnant deals across "
                             f"{count(anomaly_overview['stalledAccounts'])} accounts; "
@@ -723,46 +705,34 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
                                      if d["closureProbability"] is not None
                                      and d["closureProbability"] < .5), None)
     stalled_deal = stalled_deals[0] if stalled_deals else None
-    slipped_deal = slippage_deals[0] if slippage_deals else None
     closure_insight(
         low_probability_deal, "weekly:forecast-probability", 1,
         "Low-probability forecast calls need reclassification",
         (f"{closure_overview['formattedLowProbabilityRevenue']} across "
          f"{count(closure_overview['lowProbabilityDeals'])} open deals sits below 50% closure probability."),
         ([f"{low_probability_deal['deal']} has a {low_probability_deal['closureProbability']:.0%} model probability "
-          f"and {low_probability_deal['formattedRevenue']} ACV Revenue.",
+          f"and {low_probability_deal['formattedRevenue']} ACV GP.",
           f"It is currently forecast as {low_probability_deal['forecastCategory']} and rated {low_probability_deal['riskBand']} risk."]
          if low_probability_deal else []),
         (f"Ask {low_probability_deal['owner']} for the buying event, decision date, and next meeting; "
          "move it out of the current forecast call if that evidence is absent." if low_probability_deal else ""),
         "low-probability", f"closure:{low_probability_deal['key']}" if low_probability_deal else "",
     )
-    closure_insight(
-        slipped_deal, "weekly:slippage", 2, "Close-date slippage needs correction",
-        f"{closure_overview['formattedSlippageRevenue']} sits on {count(closure_overview['stats']['slippedDeals'])} deals whose close date moved later.",
-        ([f"{slipped_deal['deal']} moved {slipped_deal['closeDateSlips']} times, "
-          f"{slipped_deal['slipDays']} days later in total.",
-          slipped_deal.get("evidence") or f"Current close date: {slipped_deal['closeDate'] or 'unavailable'}."]
-         if slipped_deal else []),
-        (f"Ask {slipped_deal['owner']} to confirm the date with customer evidence this week; "
-         "otherwise re-date the deal." if slipped_deal else ""),
-        "slippage-risk", f"slippage:{slipped_deal['key']}" if slipped_deal else "",
-    )
     if stalled_deal:
         insights.append({
-            "key": "weekly:stuck", "rank": 3, "theme": "anomalies",
+            "key": "weekly:stuck", "rank": 2, "theme": "anomalies",
             "title": "Stuck pipeline needs an owner decision",
             "conclusion": (f"{anomaly_overview['formattedStalledRevenue']} across "
                            f"{count(anomaly_overview['stalledDeals'])} deals has no material movement for 60+ days."),
             "evidence": [f"{stalled_deal['deal']} has been silent for {stalled_deal['silenceDays']} days.",
-                         f"{stalled_deal['owner']} owns {stalled_deal['dealValueLabel']} ACV Revenue."],
+                         f"{stalled_deal['owner']} owns {stalled_deal['dealValueLabel']} ACV GP."],
             "nextStep": stalled_deal["nextStep"], "page": "stagnated-deals",
             "entity": stalled_deal["deal"], "actionKey": stalled_deal["actionKey"],
         })
     if findings:
         finding = findings[0]
         insights.append({
-            "key": "weekly:anomaly", "rank": 4, "theme": "anomalies",
+            "key": "weekly:anomaly", "rank": 3, "theme": "anomalies",
             "title": "A deal anomaly needs investigation",
             "conclusion": f"{finding['entity']} carries a {finding['severity'].lower()}-priority {finding['category'].lower()} finding.",
             "evidence": [finding["evidence"], f"Account pattern: {finding['category']}."],
@@ -772,7 +742,7 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
     if plays:
         play = plays[0]
         insights.append({
-            "key": "weekly:cross-sell", "rank": 5, "theme": "opportunities",
+            "key": "weekly:cross-sell", "rank": 4, "theme": "opportunities",
             "title": "A cross-sell play is ready for customer validation",
             "conclusion": (f"{play['offering']} reaches {count(play['customerCount'])} customers "
                            f"across {count(play['ownerCount'])} owners."),
@@ -782,9 +752,9 @@ def _weekly_focus(fs: FilterState, principal: Principal, findings: list[dict],
             "entity": play["pilotAccount"], "actionKey": f"opportunity:{play['key']}",
         })
     insights = sorted(insights, key=lambda item: item["rank"])
-    for rank, insight in enumerate(insights[:5], start=1):
+    for rank, insight in enumerate(insights[:4], start=1):
         insight["rank"] = rank
-    return banner, insights[:5]
+    return banner, insights[:4]
 
 
 def payload(fs: FilterState, principal: Principal) -> dict:
@@ -794,7 +764,7 @@ def payload(fs: FilterState, principal: Principal) -> dict:
     actions = _actions(plays, findings, stalled_deals, closures, slippage_deals)
     action_overview = _action_overview(actions)
     weekly_banner, weekly_insights = _weekly_focus(
-        fs, principal, findings, closures, stalled_deals, slippage_deals, plays,
+        findings, closures, stalled_deals, plays,
         opportunity_overview, anomaly_overview, closure_overview,
     )
     return {

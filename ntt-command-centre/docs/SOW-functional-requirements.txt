@@ -736,7 +736,7 @@ Opportunity / account context
 	Account, industry, opportunity, stage, confidence, forecast category, create date, close date, opportunity/account owner, business unit, service category, order type, contract term.
 	
 Commercial value
-	ACV revenue, ACV GP, TCV revenue, TCV GP, gross margin percent.
+	ACV GP, ACV GP, TCV revenue, TCV GP, gross margin percent.
 	
 Budget / coverage
 	Quarterly budget, monthly budget, total pipeline, qualified pipeline, closed + commit, budget gap, RAG status.

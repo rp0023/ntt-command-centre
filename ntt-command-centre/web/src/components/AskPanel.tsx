@@ -140,7 +140,47 @@ function alternatives(response: AskResponse): string[] {
 /** A provider name a reader can understand. Anything unknown is shown as sent. */
 function providerLabel(provider: string): string {
   if (provider === "computed" || provider === "template") return "computed on the server";
+  if (provider === "hybrid") return "computed facts with AI perspective";
   return provider;
+}
+
+interface WeeklyInsightQuestion {
+  title: string;
+  conclusion: string;
+  evidence: string[];
+  nextStep: string;
+  revenue?: string;
+}
+
+/**
+ * Weekly-insight Ask buttons pass structured context to the server in one
+ * sentence. Render that context as the compact brief it really is, while
+ * leaving every free-form question untouched.
+ */
+function weeklyInsightQuestion(question: string): WeeklyInsightQuestion | null {
+  const match = question.match(/^Explain the weekly insight\s+[“"](.+?)[”"]\.\s+Conclusion:\s+(.+?)\.\s+Evidence:\s+(.+?)\.\s+Recommended next step:\s+(.+?)(?:\.\s+Associated revenue:\s+(.+?))?\.?$/i);
+  if (!match) return null;
+  return {
+    title: match[1],
+    conclusion: match[2],
+    evidence: match[3].split("; ").map((item) => item.trim()).filter(Boolean),
+    nextStep: match[4],
+    revenue: match[5],
+  };
+}
+
+function AskedQuestion({ question }: { question: string }) {
+  const insight = weeklyInsightQuestion(question);
+  if (!insight) return <span className="ask-turn__q-text">{question}</span>;
+  return <div className="ask-turn__insight-question">
+    <strong>{insight.title}</strong>
+    <dl>
+      <div><dt>Conclusion</dt><dd>{insight.conclusion}</dd></div>
+      <div><dt>Evidence</dt><dd><ul>{insight.evidence.map((item, index) => <li key={index}>{item}</li>)}</ul></dd></div>
+      <div><dt>Recommended next step</dt><dd>{insight.nextStep}</dd></div>
+      {insight.revenue ? <div><dt>Associated revenue</dt><dd>{insight.revenue}</dd></div> : null}
+    </dl>
+  </div>;
 }
 
 type TurnStatus = "pending" | "done" | "failed";
@@ -317,6 +357,13 @@ export function AskPanel({
     return () => {
       for (const ac of map.values()) ac.abort();
       map.clear();
+      // React's development effect check runs this cleanup immediately after
+      // the first request starts, then restores the component state.  Without
+      // clearing the aborted pending turn and its seed, the restored panel
+      // shows a spinner forever while the server quite correctly logs 200 for
+      // the request it had already received.
+      setTurns((turns) => turns.filter((turn) => turn.status !== "pending"));
+      seeded.current = null;
     };
   }, []);
 
@@ -501,10 +548,10 @@ export function AskPanel({
                   </p>
                 ) : null}
 
-                <p className="ask-turn__question">
+                <div className="ask-turn__question">
                   <span className="ask-turn__q-label">You asked</span>
-                  <span className="ask-turn__q-text">{turn.question}</span>
-                </p>
+                  <AskedQuestion question={turn.question} />
+                </div>
 
                 {turn.status === "pending" ? <AnswerSkeleton /> : null}
 
@@ -653,7 +700,7 @@ interface AnswerProps {
 }
 
 function Answer({ response, onAsk, onRetry }: AnswerProps) {
-  const { answer, chart, plan, chartWhy, refused } = response;
+  const { answer, aiPerspective, chart, plan, chartWhy, refused } = response;
   // The server stamps these on the response; older payloads carried them on
   // the narrative. Either is read, so a cached answer is not misdescribed.
   const provider = response.provider ?? answer.provider;
@@ -707,6 +754,24 @@ function Answer({ response, onAsk, onRetry }: AnswerProps) {
             );
           })}
         </ul>
+      ) : null}
+
+      {aiPerspective?.sentences.length ? (
+        <section className="ask-ai-perspective" aria-labelledby={`ai-perspective-${answer.headline}`}>
+          <p id={`ai-perspective-${answer.headline}`} className="ask-ai-perspective__label">
+            AI perspective{aiPerspective.provider ? ` · ${providerLabel(aiPerspective.provider)}` : ""}
+          </p>
+          <h5>{aiPerspective.headline}</h5>
+          <ul className="ask-sentences">
+            {aiPerspective.sentences.map((s, i) => {
+              const meta = LENS_META[s.lens];
+              return <li className="ask-sentence" key={`perspective-${s.lens}-${i}`}>
+                <span className={`ask-sentence__lens ask-sentence__lens--${s.lens}`} title={meta.why}>{meta.label}</span>
+                <span className="ask-sentence__text">{emphasise(s.text, s.bold)}</span>
+              </li>;
+            })}
+          </ul>
+        </section>
       ) : null}
 
       {chart ? (

@@ -240,7 +240,7 @@ function render(
     if (d.gp !== undefined && !isPct)
       tipRows.push(["Pipeline GP", formatValue(Number(d.gp), "currency")]);
     const rev = d.rev ?? d.revenue;
-    if (rev !== undefined) tipRows.push(["ACV revenue", formatValue(Number(rev), "currency")]);
+    if (rev !== undefined) tipRows.push(["ACV GP", formatValue(Number(rev), "currency")]);
     const count = d.count ?? d.lines;
     if (count !== undefined)
       tipRows.push([

@@ -74,7 +74,7 @@ def meta(store: Store, principal: Principal) -> dict[str, Any]:
         "filters": filter_options(lines if not lines.empty else store.lines),
         "notes": [
             "Grain is opportunity line. Stage and forecast count distinct opportunities; LOB and portfolio count lines.",
-            "GM% is SUM(ACV GP) / SUM(ACV Revenue), never an average of row GM%.",
+            "GM% is ACV GP divided by ACV, never an average of row GM%.",
             "Only SDIS carries a contract term; other portfolios are one-time (TCV = ACV).",
             "Budget is a Country → LOB → Portfolio hierarchy, illustrative and scaled to this NA extract.",
             "Anomaly rows are the Client_Anomaly_Report.csv export, joined to Opportunities.xlsx. No extra flags are generated.",

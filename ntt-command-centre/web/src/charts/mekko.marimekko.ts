@@ -1,6 +1,6 @@
 /**
  * mekko.marimekko — serves `categorical×measure×width`.
- * LOB (column width = ACV revenue) × Portfolio (segment height = mix inside the
+ * LOB (column width = ACV GP) × Portfolio (segment height = mix inside the
  * LOB), shaded by margin against the blended rate.
  *
  * The point of a Marimekko over a stacked bar is that BOTH axes carry a number:

@@ -11,7 +11,7 @@ React + TypeScript + Vite with D3 for every visualisation; FastAPI + pandas for 
 ## Demo login and local startup
 
 The login page uses email and password. Each account has a fixed role and scope:
-all Sales reps in the opportunity data, six derived pod managers, and the North America Executive. Switch users by signing out
+all Sales reps in the opportunity data, six derived pod managers, and Vikesh. Switch users by signing out
 from the profile menu. Existing shared-password sessions no longer work.
 
 PowerShell, from `ntt-command-centre/`, using the existing `api/myenv`:
@@ -75,7 +75,7 @@ showing something that looks real.
 
 | File | Rows | What it is |
 |---|---|---|
-| `NA_Synthetic_SFDC_Opportunities 1.xlsx` | 3,034 | The fact table, at **opportunity-line** grain. 2,050 opportunities, 363 accounts, 70 reps, $58.85M ACV revenue, $9.55M ACV GP. |
+| `NA_Synthetic_SFDC_Opportunities 1.xlsx` | 3,034 | The fact table, at **opportunity-line** grain. 2,050 opportunities, 363 accounts, 70 reps, $58.85M ACV GP, $9.55M ACV GP. |
 | `NA_Synthetic_SFDC_Opportunity_Movement.csv` | 36,631 | The field-level change log. Every behavioural finding in the product comes from here. |
 | `Client_Anomaly_Report.csv` | 485 | The data-science team's detections across 7 categories and 23 types. |
 | `NA_SFDC_Deal_Closure_Model_v2_SHAP_Benchmarks.xlsx` | 14,872 | Their closure model: calibrated P(win), risk buckets, a per-deal SHAP driver, and 9 benchmarked features. Covers **all** of this book's open deals. |

@@ -227,7 +227,7 @@ function render(
   const hOf = (pct: number) => Math.max(MIN_HALF, half(Math.max(0, pct)));
   const bandTop = (i: number) => TOP_PAD + i * (BAND + gap);
 
-  // The contract carries `measureLabel` ("ACV GP" | "ACV Revenue") on every
+  // The contract carries `measureLabel` ("ACV GP" | "ACV GP") on every
   // spec; api/types.ts does not declare it yet, so it is read defensively and
   // falls back to the neutral word rather than being invented.
   const declared = (spec as unknown as { measureLabel?: unknown }).measureLabel;

@@ -283,7 +283,7 @@ def to_chart_spec(plan: dict, result: Result, fs: FilterState) -> dict | None:
            else "currency")
     label = {"gm": "GM %", "winrate": "Win rate", "count": "Count",
              "cycle": "Cycle days", "quietdays": "Days silent"}.get(
-        metric, "ACV GP" if metric in ("gp", "risk") else "ACV Revenue")
+        metric, "ACV GP")
 
     if result.shape == "categorical×categorical×measure":
         data: Any = {

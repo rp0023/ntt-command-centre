@@ -304,7 +304,7 @@ export interface ExecutiveAction {
   dueDate: string; headline: string; description: string; nextStep: string;
   revenueImpact?: number; formattedRevenueImpact?: string;
   revenueLabel?: string;
-  revenueBasis?: "deal_acv" | "account_book_acv" | "peer_benchmark";
+  revenueBasis?: "deal_acv" | "account_book_acv" | "peer_benchmark" | "anomaly_report";
   revenueEntityKey?: string; sourcePage?: Lens;
   options: ExecutiveActionOption[];
 }
@@ -491,6 +491,8 @@ export interface AskResponse {
   question: string;
   plan?: Record<string, unknown>;
   answer: Narrative;
+  /** Model-generated interpretation added to a fixed, server-derived action. */
+  aiPerspective?: Narrative | null;
   chart?: ChartSpec | null;
   rows?: Record<string, unknown>[];
   shape?: Shape;

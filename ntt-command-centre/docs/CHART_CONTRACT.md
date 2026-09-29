@@ -10,7 +10,7 @@ interface ChartSpecBase {
   subtitle?: string;
   shape: Shape;               // drives repository resolution
   repositoryKey: string;      // the server's own resolution; the client re-runs the rule as a check
-  measureLabel: string;       // "ACV GP" | "ACV Revenue"
+  measureLabel: string;       // "ACV GP" | "ACV GP"
   format: "currency" | "percent" | "number" | "days";
   countBasis?: "lines" | "opportunities";
   basisNote?: string;         // printed in the card footer

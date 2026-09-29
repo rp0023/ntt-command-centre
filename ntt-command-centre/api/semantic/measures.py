@@ -45,7 +45,7 @@ MEASURES: tuple[str, ...] = ("gp", "revenue")
 DEFAULT_MEASURE: Measure = "gp"
 
 VALUE_COLUMN: dict[str, str] = {"gp": "acv_gp", "revenue": "acv_revenue"}
-MEASURE_LABEL: dict[str, str] = {"gp": "ACV GP", "revenue": "ACV Revenue"}
+MEASURE_LABEL: dict[str, str] = {"gp": "ACV GP", "revenue": "ACV GP"}
 #: The measure as a word in a sentence — "$805K of gross profit", "of revenue".
 MEASURE_WORD: dict[str, str] = {"gp": "gross profit", "revenue": "revenue"}
 
