@@ -257,10 +257,7 @@ function ClosureRisk({ data, focus }: { data: ExecutivePayload; focus: "low" | "
   const { openAction } = useApp();
   const [band, setBand] = useState("All"); const [forecast, setForecast] = useState("All"); const [stage, setStage] = useState("All"); const [owner, setOwner] = useState("All"); const [sort, setSort] = useState("risk");
   const focusedRows = data.closureExceptions.filter(d => focus === "low" ? (d.closureProbability != null && d.closureProbability < 0.5) : d.closeDateSlips > 0);
-  // Bucket 1 is the priority group; all other/missing buckets follow.
-  // Risk score resolves ties within each group.
-  const riskBucketTier = (bucket: number | null | undefined) => bucket === 1 ? 0 : 1;
-  const rows = focusedRows.filter(d => (band === "All" || d.riskBucketLabel === band) && (forecast === "All" || d.forecastCategory === forecast) && (stage === "All" || d.stage === stage) && (owner === "All" || d.owner === owner)).sort((a, b) => sort === "revenue" ? b.revenue - a.revenue : riskBucketTier(a.riskBucket) - riskBucketTier(b.riskBucket) || b.riskScore - a.riskScore || b.revenue - a.revenue);
+  const rows = focusedRows.filter(d => (band === "All" || d.riskBucketLabel === band) && (forecast === "All" || d.forecastCategory === forecast) && (stage === "All" || d.stage === stage) && (owner === "All" || d.owner === owner)).sort((a, b) => sort === "revenue" ? b.revenue - a.revenue || (a.riskBucket ?? 99) - (b.riskBucket ?? 99) : (a.riskBucket ?? 99) - (b.riskBucket ?? 99) || b.revenue - a.revenue);
   const options = (key: "forecastCategory" | "stage" | "owner") => [...new Set(data.closureExceptions.map(d => d[key]))].sort();
   return <>
     <section className="exec-revenue-overview" aria-labelledby="closure-revenue-title">
