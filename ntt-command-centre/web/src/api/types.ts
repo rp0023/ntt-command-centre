@@ -228,6 +228,7 @@ export interface ExecutivePlay {
 }
 export interface ExecutiveFinding {
   key: string; severity: Urgency; entityType: string; entityId: string; entity: string;
+  severityScore?: number;
   category: string; evidence: string; owner: string;
   question: string; nextStep: string;
   revenue: number; formattedRevenue: string;

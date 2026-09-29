@@ -395,7 +395,7 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             "closeDateSlips": row.close_date_slips or 0,
             "slipDays": row.slip_days or 0,
             "deterioration": "; ".join(deterioration) if deterioration else "No deterioration signal detected",
-            "revenue": row.acv_revenue, "formattedRevenue": row.acv_revenue,
+            "revenue": row.acv_revenue, "formattedRevenue": money(row.acv_revenue),
         })
 
     # Slippage is a movement-log use case, not a model-risk use case. Include
@@ -429,7 +429,7 @@ def _closure(fs: FilterState, principal: Principal) -> tuple[dict, list[dict], d
             "owner": str(row.owner),
             "accountOwner": str(row.account_owner),
             "revenue": row.acv_revenue,
-            "formattedRevenue": row.acv_revenue,
+            "formattedRevenue": money(row.acv_revenue),
             "forecastCategory": str(row.forecast_category),
             "riskBand": str(row.risk_band),
             "evidence": evidence or None,
@@ -758,6 +758,12 @@ def _weekly_focus(findings: list[dict], closures: list[dict],
 
 
 def payload(fs: FilterState, principal: Principal) -> dict:
+    # The Executive use cases are intentionally isolated to the supplied
+    # storyline workbook; no CRM, anomaly, cross-sell, or model extract is
+    # consulted for these three tabs.
+    from . import storyline
+    return storyline.payload()
+
     opportunity_message, plays, opportunity_overview = _opportunities(fs, principal)
     anomaly_message, findings, anomaly_overview, stalled_deals = _anomalies(fs, principal)
     closure_message, closures, disclosure, closure_overview, slippage_deals = _closure(fs, principal)
@@ -804,10 +810,10 @@ def view(page: str, fs: FilterState, principal: Principal, label: str, question:
         focused["opportunityPlays"] = []
         focused["closureExceptions"] = []
         focused["slippageDeals"] = []
-        if page == "stagnated-deals":
-            focused["anomalyFindings"] = []
-        else:
-            focused["stalledDeals"] = []
+        # The storyline workbook supplies one anomaly table, not a separate
+        # movement-log table. Both anomaly destinations therefore render that
+        # same supplied table instead of supplementing it from another source.
+        focused["stalledDeals"] = []
     elif page in ("low-probability", "slippage-risk"):
         focused["actions"] = [a for a in focused["actions"] if a["theme"] == "closure"]
         focused["opportunityPlays"] = []
@@ -826,7 +832,7 @@ def view(page: str, fs: FilterState, principal: Principal, label: str, question:
     page_revenue = {
         "low-probability": {"value": focused["closureOverview"]["lowProbabilityRevenue"], "formatted": focused["closureOverview"]["formattedLowProbabilityRevenue"], "label": "open revenue scores below 50% closure probability"},
         "slippage-risk": {"value": focused["closureOverview"]["slippageRevenue"], "formatted": focused["closureOverview"]["formattedSlippageRevenue"], "label": "open revenue has a moved close date"},
-        "stagnated-deals": {"value": focused["anomalyOverview"]["stalledRevenue"], "formatted": focused["anomalyOverview"]["formattedStalledRevenue"], "label": "open revenue has no material movement for 60+ days"},
+        "stagnated-deals": {"value": focused["anomalyOverview"]["accountRevenue"], "formatted": focused["anomalyOverview"]["formattedAccountRevenue"], "label": "deal value represented in the supplied anomaly table"},
         "account-anomalies": {"value": focused["anomalyOverview"]["accountRevenue"], "formatted": focused["anomalyOverview"]["formattedAccountRevenue"], "label": "open revenue belongs to accounts with a risk anomaly"},
         "opportunities": {"value": focused["opportunityOverview"]["peerRevenueBenchmark"], "formatted": focused["opportunityOverview"]["formattedPeerRevenueBenchmark"], "label": "peer-based revenue benchmark across repeatable plays; not pipeline or forecast"},
         "action-center": {"value": focused["actionOverview"]["dealAcvRevenue"], "formatted": focused["actionOverview"]["formattedDealAcvRevenue"], "label": "unique deal ACV attached to action items; account-book ACV and growth benchmark are shown separately"},
