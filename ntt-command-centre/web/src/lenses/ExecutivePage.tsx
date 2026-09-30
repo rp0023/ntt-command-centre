@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
-  ExecutiveAction, ExecutivePayload, ExecutiveTheme,
+  ExecutiveAction, ExecutivePayload, ExecutiveTheme, Lens,
   MetaPayload, Urgency, ViewPayload,
 } from "../api/types";
 import { MoreFilters } from "../components/FilterBar";
@@ -204,12 +204,12 @@ type BriefTone = "danger" | "warn" | "good" | "neutral";
 const CLOSURE_TONE: Record<string, BriefTone> = { critical: "danger", high: "danger", watch: "warn", low: "good" };
 // Severity chip (.exec-badge--*): Critical/High red, Medium amber, Low neutral.
 const SEVERITY_TONE: Record<string, BriefTone> = { critical: "danger", high: "danger", medium: "warn", low: "neutral" };
-type BriefColumn = { theme: ExecutiveTheme; label: string; page: string; totalLabel: string; items: BriefItem[] };
+type BriefColumn = { theme: ExecutiveTheme; label: string; page: Lens; totalLabel: string; items: BriefItem[] };
 
 // Same ranking as the backend's single "top item": largest revenue first;
 // growth plays break ties by confidence.
 function briefColumns(data: ExecutivePayload): BriefColumn[] {
-  const pageFor = (theme: ExecutiveTheme, fallback: string) => data.weeklyInsights.find(i => i.theme === theme)?.page ?? fallback;
+  const pageFor = (theme: ExecutiveTheme, fallback: Lens) => data.weeklyInsights.find(i => i.theme === theme)?.page ?? fallback;
   const lowProbability = data.closureExceptions.filter(d => d.closureProbability != null && d.closureProbability < .5);
   const closures = [...(lowProbability.length ? lowProbability : data.closureExceptions)].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
   const findings = [...data.anomalyFindings].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
@@ -245,7 +245,7 @@ function briefColumns(data: ExecutivePayload): BriefColumn[] {
 // Collapsed or expanded is a per-viewer preference, remembered in this browser.
 const BRIEF_TOP5_KEY = "ntt.brief.top5.collapsed";
 
-function BriefTopFive({ data, label, onOpenPage, onOpenAction }: { data: ExecutivePayload; label: string; onOpenPage: (page: string) => void; onOpenAction: (key: string) => void }) {
+function BriefTopFive({ data, label, onOpenPage, onOpenAction }: { data: ExecutivePayload; label: string; onOpenPage: (page: Lens) => void; onOpenAction: (key: string) => void }) {
   const columns = useMemo(() => briefColumns(data), [data]);
   const [selected, setSelected] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(BRIEF_TOP5_KEY) === "1"; } catch { return false; } });

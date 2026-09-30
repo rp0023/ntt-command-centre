@@ -284,6 +284,8 @@ export interface ClosureException {
   accountCycleMismatch: boolean; accountCycleContext: string | null;
   isStalled: boolean; closeDateSlips: number; slipDays: number;
   deterioration: string;
+  /** Recommended action from the source workbook, when it has one. */
+  nextStep?: string | null;
   /** Source-backed info-panel rows; when present they replace the generic fields. */
   details?: { label: string; value: string }[];
   revenue: number; formattedRevenue: string;
