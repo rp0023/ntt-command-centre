@@ -59,6 +59,7 @@ import { num } from "../lib/format";
 import { useApp } from "../state/AppStateProvider";
 import type { AskSeed } from "../state/filters";
 import { Glyph, glyphFor } from "./askGlyphs";
+import { AskedOutline } from "./AskedOutline";
 import { ChartCard } from "./ChartCard";
 
 /**
@@ -171,7 +172,7 @@ function weeklyInsightQuestion(question: string): WeeklyInsightQuestion | null {
 
 function AskedQuestion({ question }: { question: string }) {
   const insight = weeklyInsightQuestion(question);
-  if (!insight) return <span className="ask-turn__q-text">{question}</span>;
+  if (!insight) return <AskedOutline question={question} fallback={<span className="ask-turn__q-text">{question}</span>} />;
   return <div className="ask-turn__insight-question">
     <strong>{insight.title}</strong>
     <dl>

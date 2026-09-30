@@ -193,12 +193,10 @@
   gap: var(--s-1);
 }
 
+/* Sits inside the "You asked" box, which already draws the border and
+   background, so this adds no frame of its own. */
 .ask-turn__insight-question {
-  padding: var(--s-3);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--persona);
-  border-radius: var(--r-2);
-  background: color-mix(in srgb, var(--persona) 5%, transparent);
+  padding: 0;
 }
 
 .ask-turn__insight-question > strong {
@@ -238,6 +236,12 @@
   gap: 3px;
   margin: 0;
   padding-left: 1.1rem;
+  /* app.css resets lists to no markers; these are meant to read as bullets. */
+  list-style: disc;
+}
+
+.ask-turn__insight-question li::marker {
+  color: var(--persona);
 }
 
 .ask-ai-perspective {

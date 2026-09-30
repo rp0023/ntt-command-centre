@@ -384,6 +384,35 @@ def _executive_action_response(q: str, action: dict) -> dict:
     }))
 
 
+def _best_record(lower: str, records: list[dict], fields: tuple[str, ...]) -> dict | None:
+    """The record whose first field is named in the question, preferring the
+    one that also matches the most of its remaining fields."""
+    def named(record: dict, field: str) -> bool:
+        value = str(record.get(field) or "").strip().casefold()
+        return bool(value) and value in lower
+    candidates = [record for record in records if named(record, fields[0])]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda record: (
+        sum(named(record, field) for field in fields[1:]),
+        len(str(record.get(fields[0]) or "")),
+    ))
+
+
+def _computed_answer(q: str, headline: str, sentences: list[tuple[str, str]]):
+    return A.jsonable({
+        "question": q,
+        "answer": {"headline": headline,
+                   "sentences": [{"text": text, "lens": lens, "claim": None} for text, lens in sentences]},
+        "provider": "computed", "degraded": False, "cached": False,
+    })
+
+
+def _leaders(records: list[dict], name: str, value: str, formatted: str, n: int = 3) -> str:
+    top = sorted(records, key=lambda r: float(r.get(value) or 0), reverse=True)[:n]
+    return "; ".join(f"{r[name]} ({r[formatted]})" for r in top)
+
+
 def _executive_action_answer(q: str, fs: M.FilterState, principal: Principal) -> dict | None:
     """Bind an executive Ask to its selected server-derived record when possible."""
     if principal.key != "executive":
@@ -410,23 +439,35 @@ def _executive_action_answer(q: str, fs: M.FilterState, principal: Principal) ->
     # against the freshly built page payload, then follow its action key.  This
     # prevents generic terms such as "revenue" or "risk" from becoming a book-
     # wide ranking query instead of an answer about the selected record.
+    # Markers follow the wording the executive page sends (ExecutivePage.tsx
+    # ContextAsk queries). The first field must appear in the question; the
+    # others break ties, since one account can carry several findings and one
+    # offering is recommended to several accounts.
     record_routes = (
-        ("closure risk for", payload["closureExceptions"], "deal", "closure:"),
-        ("slippage risk for", payload["slippageDeals"], "deal", "slippage:"),
-        ("classified as stagnant", payload["stalledDeals"], "deal", "stalled:"),
-        (" anomaly for ", payload["anomalyFindings"], "entity", "anomaly:"),
-        (" growth play", payload["opportunityPlays"], "offering", "opportunity:"),
+        (("closure risk for",), payload["closureExceptions"], ("deal", "account"), "closure:"),
+        (("slippage risk for",), payload["slippageDeals"], ("deal", "account"), "slippage:"),
+        (("classified as stagnant",), payload["stalledDeals"], ("deal", "account"), "stalled:"),
+        ((" finding (", " anomaly for "), payload["anomalyFindings"],
+         ("entity", "typeLabel", "question", "category", "severity"), "anomaly:"),
+        ((" recommendation for ", " growth play"), payload["opportunityPlays"],
+         ("offering", "pilotAccount", "rep"), "opportunity:"),
     )
-    for marker, records, field, prefix in record_routes:
-        if marker not in lower:
+    for markers, records, fields, prefix in record_routes:
+        if not any(marker in lower for marker in markers):
             continue
-        selected = next((record for record in records
-                         if (name := str(record.get(field, "")).strip())
-                         and name.casefold() in lower), None)
+        selected = _best_record(lower, records, fields)
         if selected:
             action = by_key.get(f"{prefix}{selected['key']}")
             if action is not None:
                 return _executive_action_response(q, action)
+
+    # The brief's "top item" Ask names the insight's title; follow its action.
+    if lower.startswith("explain why this is the top"):
+        insight = next((item for item in payload["weeklyInsights"]
+                        if str(item["title"]).casefold() in lower
+                        and (not item.get("subject") or str(item["subject"]).casefold() in lower)), None)
+        if insight and insight.get("actionKey") in by_key:
+            return _executive_action_response(q, by_key[insight["actionKey"]])
 
     # Brief rows identify an insight, whose action key is the canonical link
     # to the same record shown on its source page.
@@ -467,7 +508,7 @@ def _executive_action_answer(q: str, fs: M.FilterState, principal: Principal) ->
     # planning.  Each one names its leading record only after selecting it from
     # the appropriate, already scoped worklist.
     overview = payload["anomalyOverview"]
-    if "this week's executive brief" in lower:
+    if "this week's executive brief" in lower or "this week's brief" in lower:
         banner = payload.get("weeklyBanner") or {}
         insights = payload["weeklyInsights"]
         return A.jsonable({
@@ -484,7 +525,7 @@ def _executive_action_answer(q: str, fs: M.FilterState, principal: Principal) ->
         lead = payload["opportunityPlays"][0] if payload["opportunityPlays"] else None
         sentences = [{"text": (f"{overview['recommendations']} source recommendations span "
                                f"{overview['accounts']} accounts; {overview['repeatablePlays']} are repeatable plays. "
-                               f"The median peer won revenue per recommendation is {overview['formattedPeerWonRevenueMedian']}.") ,
+                               f"Together they carry {overview['formattedPeerRevenueBenchmark']} of peer won revenue.") ,
                       "lens": "answer", "claim": None}]
         if lead:
             sentences.append({"text": f"Start with {lead['offering']}: {lead['nextStep']}",
@@ -504,7 +545,61 @@ def _executive_action_answer(q: str, fs: M.FilterState, principal: Principal) ->
         return A.jsonable({"question": q, "answer": {"headline": "Stagnant pipeline overview", "sentences": sentences},
                            "provider": "computed", "degraded": False, "cached": False})
 
-    if "account anomalies affecting" in lower:
+    if "stagnant-deal inactivity bands" in lower:
+        bands = overview.get("stagnationBands") or []
+        busiest = max(bands, key=lambda band: float(band.get("revenue") or band.get("deals") or 0), default=None)
+        if not overview.get("stalledDeals"):
+            return _computed_answer(q, "Stagnant-deal inactivity bands", [
+                ("The supplied workbooks contain no stagnant deals, so no inactivity band needs attention.", "answer")])
+        sentences = [(f"{overview['stalledDeals']} stagnant deals carry {overview['formattedStalledRevenue']} "
+                      f"of associated ACV GP; the longest silence is {overview['longestSilenceDays']} days.", "answer")]
+        if busiest:
+            sentences.append((f"Start with the {busiest['label']} band, which holds the most stalled value.", "action"))
+        return _computed_answer(q, "Stagnant-deal inactivity bands", sentences)
+
+    # Action Center revenue cards: one per use case, each answered from its own worklist.
+    if "deal closure actions" in lower:
+        action_overview = payload["actionOverview"]
+        return _computed_answer(q, "Revenue on Deal Closure actions", [
+            (f"{action_overview['closureActions']} Deal Closure actions carry "
+             f"{action_overview['formattedClosureRevenue']} of revenue.", "answer"),
+            (f"The largest are {_leaders(payload['closureExceptions'], 'deal', 'revenue', 'formattedRevenue')}.", "state"),
+        ])
+    if "anomaly actions" in lower:
+        action_overview = payload["actionOverview"]
+        return _computed_answer(q, "ACV GP on anomaly actions", [
+            (f"{action_overview['accountActions']} anomaly actions sit on "
+             f"{action_overview['formattedAccountBookRevenue']} of ACV GP. Deal, account, industry and rep "
+             "findings can describe the same revenue, so the figures overlap rather than add.", "answer"),
+            (f"The largest are {_leaders(payload['anomalyFindings'], 'entity', 'revenue', 'formattedRevenue')}.", "state"),
+        ])
+    if "cross-sell actions" in lower:
+        action_overview = payload["actionOverview"]
+        return _computed_answer(q, "Peer benchmark on cross-sell actions", [
+            (f"{action_overview['growthActions']} cross-sell actions total "
+             f"{action_overview['formattedGrowthBenchmark']} of peer won revenue. It is what similar accounts "
+             "won on average for each offering, not pipeline or a forecast.", "answer"),
+            (f"The strongest are {_leaders(payload['opportunityPlays'], 'offering', 'peerRevenueBenchmark', 'formattedPeerRevenueBenchmark')}.", "state"),
+        ])
+
+    # The page header's revenue Ask: list the records behind that page's figure.
+    if "revenue in focus for" in lower:
+        low = [d for d in payload["closureExceptions"] if float(d.get("closureProbability") or 0) < 0.5]
+        pages = (
+            ("low probability", low, "deal", "revenue", "formattedRevenue"),
+            ("slippage", payload["slippageDeals"], "deal", "revenue", "formattedRevenue"),
+            ("anomal", payload["anomalyFindings"], "entity", "revenue", "formattedRevenue"),
+            ("growth", payload["opportunityPlays"], "offering", "peerRevenueBenchmark", "formattedPeerRevenueBenchmark"),
+            ("opportunit", payload["opportunityPlays"], "offering", "peerRevenueBenchmark", "formattedPeerRevenueBenchmark"),
+        )
+        for marker, records, name, value, formatted in pages:
+            if marker in lower and records:
+                return _computed_answer(q, "What makes up this revenue", [
+                    (f"{len(records)} records contribute to this figure.", "answer"),
+                    (f"The largest are {_leaders(records, name, value, formatted)}.", "state"),
+                ])
+
+    if "account anomalies affecting" in lower or re.search(r"explain the \d+ anomaly findings", lower):
         lead = payload["anomalyFindings"][0] if payload["anomalyFindings"] else None
         sentences = [{"text": (f"{overview['accountFindings']} account anomalies affect "
                                f"{overview['accountsAffected']} accounts, including "

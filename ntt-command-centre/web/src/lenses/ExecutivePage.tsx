@@ -4,7 +4,7 @@ import type {
   MetaPayload, Urgency, ViewPayload,
 } from "../api/types";
 import { MoreFilters } from "../components/FilterBar";
-import { longDate, moneyExact, shortDate } from "../lib/format";
+import { longDate, money, moneyExact, shortDate } from "../lib/format";
 import { useApp } from "../state/AppStateProvider";
 
 type SavedDecision = {
@@ -36,6 +36,29 @@ const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").re
 function closureProbability(value: number | null | undefined): string {
   if (value == null) return "—";
   return `${(value * 100).toFixed(1)}%`;
+}
+
+// An action that holds several steps (line breaks, "; " clauses or separate
+// sentences) reads as bullets; a single step keeps its original element.
+const ABBREVIATION_END = /\b(?:Inc|Co|Ltd|Corp|Mr|Ms|Dr|St|vs|e\.g|i\.e)$/;
+function actionSteps(text: string): string[] {
+  const parts: string[] = [];
+  for (const chunk of text.split(/\n+|;\s+/)) {
+    let buffer = "";
+    for (const sentence of chunk.split(/(?<=\.)\s+(?=[A-Z$0-9])/)) {
+      buffer = buffer ? `${buffer} ${sentence}` : sentence;
+      if (!ABBREVIATION_END.test(buffer.replace(/\.$/, ""))) { parts.push(buffer); buffer = ""; }
+    }
+    if (buffer) parts.push(buffer);
+  }
+  return parts.map(part => part.replace(/^\s*(?:[-•*]|\d+[.)])\s+/, "").trim()).filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1));
+}
+function ActionSteps({ text, as: Tag = "strong", title }: { text: string; as?: "strong" | "p" | "span"; title?: string }) {
+  const steps = actionSteps(text);
+  if (steps.length < 2) return <Tag title={title}>{text}</Tag>;
+  const list = <ul className="exec-steps">{steps.map((step, i) => <li key={i}>{step}</li>)}</ul>;
+  return Tag === "p" ? list : <Tag title={title}>{list}</Tag>;
 }
 
 function ContextAsk({ label, query, overlay = false, text = "Ask" }: { label: string; query: string; overlay?: boolean; text?: string }) {
@@ -87,7 +110,7 @@ function BriefModal({ data, open, onClose }: { data: ExecutivePayload; open: boo
             <p className="exec-brief-modal__story">{emphasiseFigures(`${overview.headline}.${overview.narrative ? ` ${overview.narrative}` : ""}`)}</p>
             {overview.stats?.length ? <dl className="exec-brief-modal__stats">{overview.stats.map(stat => <div key={stat.label}><dt>{stat.label}</dt><dd>{stat.value}</dd></div>)}</dl> : <p className="exec-brief-modal__sub">{overview.subline}</p>}
             <div className="exec-brief-modal__action">
-              <div><span>Action</span>{actionText && <p>{actionText}</p>}</div>
+              <div><span>Action</span>{actionText && <ActionSteps as="p" text={actionText} />}</div>
               <button type="button" className="exec-link exec-link--action" onClick={() => { onClose(); if (insight?.actionKey) openAction(insight.actionKey); else setPage("action-center"); }}>Open action</button>
             </div>
           </article>;
@@ -136,7 +159,7 @@ function BriefLegacy({ data }: { data: ExecutivePayload }) {
           <p className="exec-weekly-detail__conclusion">{selectedInsight.conclusion}</p>
           <section className="exec-weekly-detail__evidence" aria-labelledby="weekly-detail-evidence"><h4 id="weekly-detail-evidence">Evidence</h4><ul>{selectedInsight.evidence.map((line, index) => <li key={`${selectedInsight.key}-evidence-${index}`}>{line}</li>)}</ul></section>
           <section className="exec-weekly-detail__action" aria-labelledby="weekly-detail-action"><h4 id="weekly-detail-action">Recommended action</h4>
-            {selectedAction ? <><p>{selectedAction.description}</p><strong>{selectedAction.nextStep}</strong><span>{selectedAction.owner} · due {selectedAction.dueDate}</span></> : <p>{selectedInsight.nextStep}</p>}
+            {selectedAction ? <><p>{selectedAction.description}</p><ActionSteps text={selectedAction.nextStep} /><span>{selectedAction.owner} · due {selectedAction.dueDate}</span></> : <p>{selectedInsight.nextStep}</p>}
           </section>
           <div className="exec-weekly-detail__buttons"><button type="button" className="exec-evidence-link" onClick={() => setPage(selectedInsight.page)}>See evidence</button>{selectedAction && <button type="button" className="exec-link" onClick={() => openAction(selectedAction.key)}>Take action</button>}</div>
         </aside>}
@@ -148,7 +171,7 @@ function BriefLegacy({ data }: { data: ExecutivePayload }) {
 function Brief({ data, filters }: { data: ExecutivePayload; filters?: ReactNode }) {
   const { setPage, openAction } = useApp();
   const banner = data.weeklyBanner;
-  const insightLabel = "Top item in each use case, by revenue";
+  const insightLabel = "Top 5 in each use case, by revenue";
   if (!banner) return <BriefLegacy data={data} />;
   return <>
     <section className="brief-template" aria-labelledby="brief-template-title">
@@ -158,16 +181,139 @@ function Brief({ data, filters }: { data: ExecutivePayload; filters?: ReactNode 
         <ContextAsk label="this week's brief" text="What needs my attention?" query={`Walk me through this week's brief: which use case and top item to act on first, and why. Headline: ${banner.headline}.`} />
       </header>
       <div className="brief-template__themes">{banner.supporting.map(item => <button key={item.key} type="button" onClick={() => setPage(item.page)} className={`brief-template__theme brief-template__theme--${item.tone}`}><span>{item.label}</span>{item.amount ? <><strong className="brief-template__theme-amount">{item.amount} <em>{item.status}</em></strong><small>{item.detail}</small></> : <strong>{item.headline}</strong>}</button>)}</div>
-      <div className="brief-template__label"><span>{insightLabel}</span><span>Left: what the agent surfaced. Right: what I do about it.</span></div>
-      <div className="brief-template__rows">{data.weeklyInsights.map(insight => {
-        const action = insight.actionKey ? data.actions.find(item => item.key === insight.actionKey) : undefined;
-        return <article key={insight.key} className={`brief-template__row brief-template__row--${insight.theme}`}>
-          <button type="button" className="brief-template__insight" onClick={() => setPage(insight.page)}><span className="brief-template__pill">{THEME_LABEL[insight.theme]}</span>{action?.formattedRevenueImpact && <b className="brief-template__revenue" title={action.revenueLabel}>{action.formattedRevenueImpact}{insight.valueCaption && <small>{insight.valueCaption}</small>}</b>}<strong>{insight.title}</strong>{insight.subject && <span className="brief-template__subject" title={insight.conclusion}><em>{insight.subjectLabel}</em><b>{insight.subject}</b>{insight.subjectMeta && <small>{insight.subjectMeta}</small>}</span>}</button>
-          <div className="brief-template__action"><span>The action</span><strong>{action?.nextStep ?? insight.nextStep}</strong>{action && (() => { const meta = [action.owner, action.dueDate].filter(v => v && !/^Not (supplied|in workbook)$/.test(v)); return meta.length ? <small>{meta.join(" · ")}</small> : null; })()}<div className="brief-template__action-buttons"><ContextAsk label={insight.title} query={`Explain why this is the top ${THEME_LABEL[insight.theme].toLowerCase()} item and whether the action is right: ${insight.title}${insight.subject ? ` (${insight.subjectLabel}: ${insight.subject})` : ""}${action?.formattedRevenueImpact ? `, ${action.formattedRevenueImpact} ${insight.valueCaption ?? action.revenueLabel ?? ""}` : ""}. Action: ${action?.nextStep ?? insight.nextStep}`} /><button type="button" className={`exec-link${action ? " exec-link--action" : ""}`} onClick={() => action ? openAction(action.key) : setPage(insight.page)}>{action ? "Open action" : "See detail"}</button></div></div>
-        </article>;
-      })}</div>
+      <BriefTopFive data={data} label={insightLabel} onOpenPage={setPage} onOpenAction={openAction} />
     </section>
   </>;
+}
+
+// One entry in a Brief top-five column, normalised across the three use cases
+// so the column and the side panel render them the same way.
+type BriefItem = {
+  key: string; theme: ExecutiveTheme; title: string; subject: string; meta: string;
+  revenue: number; formattedRevenue: string; revenueLabel: string; actionKey: string;
+  facts: { label: string; value: string }[];
+  details: { label: string; value: string }[];
+  nextStep: string; ask: string;
+  /** Criticality label behind the item's shadow; null where the use case has none (cross-sell). */
+  level: string | null;
+  /** Shadow colour, matching the chip on the item's own page. */
+  tone: BriefTone | null;
+};
+type BriefTone = "danger" | "warn" | "good" | "neutral";
+// Risk-bucket chip (.exec-score--*): Critical/High red, Watch amber, Low green.
+const CLOSURE_TONE: Record<string, BriefTone> = { critical: "danger", high: "danger", watch: "warn", low: "good" };
+// Severity chip (.exec-badge--*): Critical/High red, Medium amber, Low neutral.
+const SEVERITY_TONE: Record<string, BriefTone> = { critical: "danger", high: "danger", medium: "warn", low: "neutral" };
+type BriefColumn = { theme: ExecutiveTheme; label: string; page: string; totalLabel: string; items: BriefItem[] };
+
+// Same ranking as the backend's single "top item": largest revenue first;
+// growth plays break ties by confidence.
+function briefColumns(data: ExecutivePayload): BriefColumn[] {
+  const pageFor = (theme: ExecutiveTheme, fallback: string) => data.weeklyInsights.find(i => i.theme === theme)?.page ?? fallback;
+  const lowProbability = data.closureExceptions.filter(d => d.closureProbability != null && d.closureProbability < .5);
+  const closures = [...(lowProbability.length ? lowProbability : data.closureExceptions)].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+  const findings = [...data.anomalyFindings].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+  const plays = [...data.opportunityPlays].sort((a, b) => b.peerRevenueBenchmark - a.peerRevenueBenchmark || (CONFIDENCE_RANK[a.confidence] ?? 9) - (CONFIDENCE_RANK[b.confidence] ?? 9)).slice(0, 5);
+  return [
+    { theme: "closure", label: "Deal closure", page: pageFor("closure", "low-probability"), totalLabel: "revenue", items: closures.map(d => ({
+      key: `closure:${d.key}`, theme: "closure", level: d.riskBucketLabel, tone: CLOSURE_TONE[d.riskBucketLabel.toLowerCase()] ?? null, title: d.deal, subject: d.account,
+      meta: `${closureProbability(d.closureProbability)} to close · ${d.forecastCategory}`,
+      revenue: d.revenue, formattedRevenue: money(d.revenue), revenueLabel: "Revenue", actionKey: `closure:${d.key}`,
+      facts: [{ label: "Closure probability", value: closureProbability(d.closureProbability) }, { label: "Forecast", value: d.forecastCategory }, { label: "Stage", value: d.stage }, { label: "Owner", value: d.owner }, { label: "Model criticality", value: `${d.riskBucketLabel}${d.riskBucket != null ? ` · bucket ${d.riskBucket}` : ""}` }, { label: "Primary driver", value: d.mainDriver }],
+      details: d.details ?? [], nextStep: d.nextStep ?? "Validate the evidence and assign an owner.",
+      ask: `Explain the closure risk for ${d.deal} at ${d.account}: ${closureProbability(d.closureProbability)} closure probability, ${money(d.revenue)} revenue, ${d.forecastCategory} forecast, and primary driver ${d.mainDriver}. Recommend the next evidence-based action.`,
+    })) },
+    { theme: "anomalies", label: "Anomalies", page: pageFor("anomalies", "account-anomalies"), totalLabel: "ACV GP, can overlap", items: findings.map(f => ({
+      key: `anomaly:${f.key}`, theme: "anomalies", level: f.severity, tone: SEVERITY_TONE[f.severity.toLowerCase()] ?? null, title: f.entity, subject: f.typeLabel ?? f.question,
+      meta: `${f.severity}${f.severityScore != null ? ` · risk score ${f.severityScore}` : ""}`,
+      revenue: f.revenue, formattedRevenue: money(f.revenue), revenueLabel: f.revenueLabel ?? "ACV GP at stake", actionKey: `anomaly:${f.key}`,
+      facts: [{ label: "Severity", value: `${f.severity}${f.severityScore != null ? ` (${f.severityScore} of 100)` : ""}` }, { label: "Category", value: f.category }, { label: "Entity type", value: f.entityType }, { label: "Owner", value: f.owner }, { label: "Evidence", value: f.evidence }],
+      details: f.details ?? [], nextStep: f.nextStep,
+      ask: `Explain the ${f.severity.toLowerCase()} ${f.typeLabel ?? f.question} finding (${f.category}) for ${f.entity}. Evidence: ${f.evidence}. The owner is ${f.owner}. Validate why it was flagged and recommend the next action.`,
+    })) },
+    { theme: "opportunities", label: "Cross-sell and upsell", page: pageFor("opportunities", "opportunities"), totalLabel: "peer won revenue", items: plays.map(p => ({
+      key: `opportunity:${p.key}`, theme: "opportunities", level: null, tone: null, title: p.offering, subject: p.pilotAccount,
+      meta: `${p.confidence} confidence · ${p.rep ?? p.pilotOwner}`,
+      revenue: p.peerRevenueBenchmark, formattedRevenue: money(p.peerRevenueBenchmark), revenueLabel: "Revenue benchmark", actionKey: `opportunity:${p.key}`,
+      facts: [{ label: "Company", value: p.pilotAccount }, { label: "Rep", value: p.rep ?? p.pilotOwner }, { label: "Confidence", value: p.confidence }, { label: "Why", value: p.reason }],
+      details: p.details ?? [], nextStep: p.nextStep,
+      ask: `Explain the ${p.offering} recommendation for ${p.pilotAccount} (rep: ${p.rep ?? p.pilotOwner}). It has ${p.confidence} confidence and a ${p.formattedPeerRevenueBenchmark} peer-based revenue benchmark. Show the source evidence and recommend the next step.`,
+    })) },
+  ].filter(column => column.items.length) as BriefColumn[];
+}
+
+// Collapsed or expanded is a per-viewer preference, remembered in this browser.
+const BRIEF_TOP5_KEY = "ntt.brief.top5.collapsed";
+
+function BriefTopFive({ data, label, onOpenPage, onOpenAction }: { data: ExecutivePayload; label: string; onOpenPage: (page: string) => void; onOpenAction: (key: string) => void }) {
+  const columns = useMemo(() => briefColumns(data), [data]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(BRIEF_TOP5_KEY) === "1"; } catch { return false; } });
+  const toggle = () => setCollapsed(value => {
+    try { localStorage.setItem(BRIEF_TOP5_KEY, value ? "0" : "1"); } catch { /* storage unavailable */ }
+    return !value;
+  });
+  const item = columns.flatMap(column => column.items).find(entry => entry.key === selected) ?? null;
+  return <>
+    <div className="brief-template__label brief-template__label--toggle">
+      <button type="button" className="brief-top5__toggle" onClick={toggle} aria-expanded={!collapsed} aria-controls="brief-top5">
+        <span aria-hidden="true" className="brief-top5__chevron">▾</span><span>{label}</span>
+      </button>
+      <span>{collapsed ? "Expand to see each item." : "Select an item to see its details and action."}</span>
+    </div>
+    <div id="brief-top5" className={`brief-top5${collapsed ? " is-collapsed" : ""}`}>{columns.map(column => {
+      const total = column.items.reduce((sum, entry) => sum + entry.revenue, 0);
+      return <section key={column.theme} className={`brief-top5__col brief-top5__col--${column.theme}`} aria-label={`Top ${column.items.length} ${column.label}`}>
+        <header className="brief-top5__head">
+          <button type="button" className="brief-top5__title" onClick={() => onOpenPage(column.page)}>{column.label}</button>
+          <div className="brief-top5__total"><strong>{money(total)}</strong><span>top {column.items.length} · {column.totalLabel}</span></div>
+        </header>
+        {!collapsed && <ol className="brief-top5__list">{column.items.map((entry, index) =>
+          <li key={entry.key}><button type="button" className={`brief-top5__item${entry.tone ? ` brief-top5__item--${entry.tone}` : ""}${selected === entry.key ? " is-selected" : ""}`} title={entry.level ? `${entry.theme === "closure" ? "Risk bucket" : "Severity"}: ${entry.level}` : undefined} onClick={() => setSelected(entry.key)} aria-haspopup="dialog">
+            <span className="brief-top5__rank">{index + 1}</span>
+            <span className="brief-top5__copy"><strong>{entry.title}</strong><small>{entry.subject}</small><em>{entry.meta}</em></span>
+            <b className="brief-top5__value">{entry.formattedRevenue}</b>
+          </button></li>)}
+        </ol>}
+      </section>;
+    })}</div>
+    {item && <BriefSidebar item={item} action={data.actions.find(a => a.key === item.actionKey)} onClose={() => setSelected(null)} onOpenAction={onOpenAction} />}
+  </>;
+}
+
+// Placeholder values ("Not in workbook", "—", "N/A", ...) are left out of the
+// side panel; the full record, gaps included, stays on the use-case page.
+const MISSING_VALUE = /^\s*(?:[-–—]+|n\/?a|none|null|nan|unknown|missing|unavailable|date unavailable|not (?:in workbook|supplied|available|found|present|provided|recorded|applicable)\b.*)\s*\.?\s*$/i;
+const hasValue = (value: string | null | undefined) => value != null && value.trim() !== "" && !MISSING_VALUE.test(value);
+
+function BriefSidebar({ item, action, onClose, onOpenAction }: { item: BriefItem; action?: ExecutiveAction; onClose: () => void; onOpenAction: (key: string) => void }) {
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("keydown", onKeyDown); previous?.focus(); };
+  }, [item.key, onClose]);
+  const nextStep = action?.nextStep ?? item.nextStep;
+  // Source rows that repeat a headline fact are dropped so each value shows once.
+  const facts = item.facts.filter(fact => hasValue(fact.value));
+  const shown = new Set(item.facts.map(fact => fact.label.toLowerCase()));
+  const details = item.details.filter(detail => hasValue(detail.value) && !shown.has(detail.label.toLowerCase()));
+  return <div className="brief-side" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <aside className={`brief-side__panel brief-side__panel--${item.theme}`} role="dialog" aria-modal="true" aria-labelledby="brief-side-title">
+      <header className="brief-side__head">
+        <div><span className="brief-side__pill">{THEME_LABEL[item.theme]}</span><h3 id="brief-side-title">{item.title}</h3>{hasValue(item.subject) && <p>{item.subject}</p>}</div>
+        <button ref={closeRef} type="button" onClick={onClose} aria-label="Close details">×</button>
+      </header>
+      <div className="brief-side__revenue"><span>{item.revenueLabel}</span><strong>{item.formattedRevenue}</strong></div>
+      {facts.length > 0 && <section className="brief-side__section"><h4>Details</h4><dl>{facts.map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl></section>}
+      {details.length > 0 && <section className="brief-side__section"><h4>Source details</h4><dl>{details.map(detail => <div key={detail.label}><dt>{detail.label}</dt><dd>{detail.value}</dd></div>)}</dl></section>}
+      <section className="brief-side__section brief-side__action"><h4>The action</h4><ActionSteps text={nextStep} />
+        <div className="brief-template__action-buttons"><ContextAsk label={item.title} query={item.ask} />{action && <button type="button" className="exec-link exec-link--action" onClick={() => { onClose(); onOpenAction(action.key); }}>Open action</button>}</div>
+      </section>
+    </aside>
+  </div>;
 }
 
 function Opportunities({ data }: { data: ExecutivePayload }) {
@@ -181,24 +327,32 @@ function Opportunities({ data }: { data: ExecutivePayload }) {
   const plays = [...data.opportunityPlays].sort((a, b) => sort === "revenue" ? byRevenue(a, b) || byConfidence(a, b)
     : sort === "confidence" ? byConfidence(a, b) || byRevenue(a, b) : 0);
   return <><section className="exec-domain-overview" aria-labelledby="opportunity-overview-title">
-    <div className="exec-domain-overview__head"><div><p className="exec-eyebrow">Cross-sell and upsell overview</p><h2 id="opportunity-overview-title">Where a repeatable customer play is visible</h2></div><ContextAsk label="growth-play overview" text="What should we pilot first?" query={`Explain the growth-play overview: ${overview.recommendations} recommendations across ${overview.accounts} accounts, ${overview.repeatablePlays} repeatable plays, and a median peer won revenue of ${overview.formattedPeerWonRevenueMedian} per recommendation. Identify the strongest evidence and the best pilot to run next.`} />
-      <details className="exec-info"><summary aria-label="How opportunity recommendations are calculated">i</summary><div><b>How this is calculated</b><p>Every figure comes from the Deal Enrichment workbook. A repeatable play is the same offering recommended for at least two accounts; {overview.repeatableRecommendations} recommendations sit in plays and {overview.singleAccountRecommendations} are single-account. Each recommendation carries AvgWonRevenue: what similar peer accounts won on average for that offering. The overview shows the median of those values ({overview.formattedPeerWonRevenueMedian}; range {overview.formattedPeerWonRevenueMin} to {overview.formattedPeerWonRevenueMax}) rather than a total, because each value describes peers, not this account's own pipeline. It is a benchmark, not pipeline, projected upside or a forecast.</p></div></details>
+    <div className="exec-domain-overview__head"><div><p className="exec-eyebrow">Cross-sell and upsell overview</p><h2 id="opportunity-overview-title">Where a repeatable customer play is visible</h2></div><ContextAsk label="growth-play overview" text="What should we pilot first?" query={`Explain the growth-play overview: ${overview.recommendations} recommendations across ${overview.accounts} accounts, ${overview.repeatablePlays} repeatable plays, and a total peer won revenue of ${overview.formattedPeerRevenueBenchmark} across all recommendations. Identify the strongest evidence and the best pilot to run next.`} />
+      <details className="exec-info"><summary aria-label="How opportunity recommendations are calculated">i</summary><div><b>How this is calculated</b><p>Every figure comes from the Deal Enrichment workbook. A repeatable play is the same offering recommended for at least two accounts; {overview.repeatableRecommendations} recommendations sit in plays and {overview.singleAccountRecommendations} are single-account. Each recommendation carries AvgWonRevenue: what similar peer accounts won on average for that offering. The overview shows the total of those values ({overview.formattedPeerRevenueBenchmark}; each ranges from {overview.formattedPeerWonRevenueMin} to {overview.formattedPeerWonRevenueMax}). Each value describes peers, not this account's own pipeline, and recommendations for the same offering can repeat the same benchmark. It is a benchmark, not pipeline, projected upside or a forecast.</p></div></details>
     </div>
     <div className="exec-domain-leads"><div><strong>{overview.recommendations}</strong><span>recommendations across {overview.accounts} accounts</span></div><div><strong>{overview.repeatablePlays}</strong><span>repeatable plays{overview.topPlay ? ` · ${overview.topPlay} leads across ${overview.topPlayAccounts} accounts` : ""}</span></div></div>
-    <div className="exec-domain-stats"><div><strong>{overview.accounts}</strong><span>Accounts</span></div><div><strong>{overview.recommendations}</strong><span>Source recommendations</span></div><div><strong>{overview.repeatableRecommendations}</strong><span>Recommendations in plays</span></div><div><strong>{overview.strongRecommendations}</strong><span>High / very high</span></div><div><strong>{overview.repeatablePlays}</strong><span>Repeatable plays</span></div><div><strong>{overview.formattedPeerWonRevenueMedian}</strong><span>Median peer won revenue{overview.formattedPeerWonRevenueMin ? ` · range ${overview.formattedPeerWonRevenueMin}–${overview.formattedPeerWonRevenueMax}` : ""}</span></div></div>
+    <div className="exec-domain-stats"><div><strong>{overview.accounts}</strong><span>Accounts</span></div><div><strong>{overview.recommendations}</strong><span>Source recommendations</span></div><div><strong>{overview.repeatableRecommendations}</strong><span>Recommendations in plays</span></div><div><strong>{overview.strongRecommendations}</strong><span>High / very high</span></div><div><strong>{overview.repeatablePlays}</strong><span>Repeatable plays</span></div><div><strong>{overview.formattedPeerRevenueBenchmark}</strong><span>Total peer won revenue{overview.formattedPeerWonRevenueMin ? ` · range ${overview.formattedPeerWonRevenueMin}–${overview.formattedPeerWonRevenueMax} each` : ""}</span></div></div>
   </section>
     <section className="exec-section"><div className="exec-section__head"><div><p className="exec-eyebrow">Ranked worklist</p><h2>Plays ready for a pilot</h2></div><div className="exec-controls"><label>Sort<select value={sort} onChange={e => setSort(e.target.value)}><option value="default">Source order</option><option value="revenue">Revenue: high to low</option><option value="confidence">Confidence: high to low</option></select></label><span>{plays.length} shown</span></div></div>
       <div className="exec-list">{plays.map((p, i) => { const action = data.actions.find(item => item.key === `opportunity:${p.key}`); return <article className="exec-row exec-row--with-action exec-row--growth-play" key={p.key}>
         <div className="exec-rank">{i + 1}</div><div className="exec-row__main exec-askable"><h3>{p.offering}</h3><p>{p.reason}</p><ContextAsk label={p.offering} overlay query={`Explain the ${p.offering} recommendation for ${p.pilotAccount} (rep: ${p.rep ?? p.pilotOwner}). It has ${p.confidence} confidence and a ${p.formattedPeerRevenueBenchmark} peer-based revenue benchmark. Show the source evidence and recommend the next step.`} /></div>
         <dl className="exec-row__facts"><div><dt>Company</dt><dd>{p.pilotAccount}</dd></div><div><dt>Rep</dt><dd>{p.rep ?? p.pilotOwner}</dd></div><div><dt>Confidence</dt><dd>{p.confidence}</dd></div><div><dt>Revenue benchmark</dt><dd>{p.formattedPeerRevenueBenchmark}</dd></div></dl>
         <details className="exec-info exec-row__info"><summary aria-label={`More information about ${p.offering} for ${p.pilotAccount}`}>i</summary><div><dl>{(p.details ?? [{ label: "Customers", value: String(p.customerCount) }, { label: "Owners", value: String(p.ownerCount) }]).map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></div></details>
-        <div className="exec-row__action"><span>The action</span><strong>{action?.nextStep ?? p.nextStep}</strong>{action && <button type="button" className="exec-link exec-link--action" onClick={() => openAction(action.key)}>Open action</button>}</div>
+        <div className="exec-row__action"><span>The action</span><ActionSteps text={action?.nextStep ?? p.nextStep} />{action && <button type="button" className="exec-link exec-link--action" onClick={() => openAction(action.key)}>Open action</button>}</div>
       </article>; })}</div></section></>;
+}
+
+function SeverityChip({ severity, score, showScore, onToggle }: { severity: string; score?: number | null; showScore: boolean; onToggle: () => void }) {
+  return <button type="button" className={`exec-badge exec-badge--score exec-badge--toggle exec-badge--${severity.toLowerCase()}`} onClick={onToggle} aria-pressed={showScore} title={showScore ? "Show severity" : "Show risk score"}>
+    {showScore ? <><b>{score ?? "—"}</b><small>Risk score</small></> : <b>{severity}</b>}
+  </button>;
 }
 
 function Anomalies({ data, accountOnly = false }: { data: ExecutivePayload; accountOnly?: boolean }) {
   const { openAction } = useApp();
   const [severity, setSeverity] = useState("All");
+  // One toggle for every finding chip: severity label or risk score.
+  const [showScores, setShowScores] = useState(false);
   const [category, setCategory] = useState("All");
   const [findingOwner, setFindingOwner] = useState("All");
   const [findingSort, setFindingSort] = useState("severity");
@@ -262,7 +416,7 @@ function Anomalies({ data, accountOnly = false }: { data: ExecutivePayload; acco
               <td>{d.daysInStage}</td>
               <td>{d.silenceDays}</td>
               <td>{d.stage}</td>
-              <td><div className="exec-anomaly-table__action"><span>{action?.nextStep ?? d.nextStep ?? "Confirm the real status, update the deal, or close it out."}</span>{action && <button type="button" className="exec-link exec-link--action" onClick={() => openAction(action.key)}>Open action</button>}</div></td>
+              <td><div className="exec-anomaly-table__action"><ActionSteps as="span" text={action?.nextStep ?? d.nextStep ?? "Confirm the real status, update the deal, or close it out."} />{action && <button type="button" className="exec-link exec-link--action" onClick={() => openAction(action.key)}>Open action</button>}</div></td>
             </tr>;
           })}
         </tbody>
@@ -272,7 +426,7 @@ function Anomalies({ data, accountOnly = false }: { data: ExecutivePayload; acco
   </section>}
   {accountOnly && <section className="exec-section">
     <div className="exec-section__head"><div><p className="exec-eyebrow">Client Anomaly Report</p><h2>Investigate source findings</h2></div><div className="exec-controls"><label>Severity<select value={severity} onChange={(e) => setSeverity(e.target.value)}><option>All</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select></label><label>Category<select value={category} onChange={(e) => setCategory(e.target.value)}><option>All</option>{[...new Set(data.anomalyFindings.map(f => f.category))].sort().map(v => <option key={v}>{v}</option>)}</select></label><label>Owner<select value={findingOwner} onChange={e => setFindingOwner(e.target.value)}><option>All</option>{[...new Set(data.anomalyFindings.map(f => f.owner))].sort().map(v => <option key={v}>{v}</option>)}</select></label><label>Sort<select value={findingSort} onChange={e => setFindingSort(e.target.value)}><option value="severity">Severity score</option><option value="revenue">Revenue: high to low</option></select></label></div></div>
-    <div className="exec-list">{rows.map((f) => { const action = data.actions.find(item => item.key === `anomaly:${f.key}`); return <article className="exec-row exec-row--with-action exec-row--account-anomaly" key={f.key}><span className={`exec-badge exec-badge--score exec-badge--${f.severity.toLowerCase()}`}><b>{f.severityScore ?? "—"}</b><small>{f.severity}</small></span><div className="exec-row__main exec-askable"><span className={`exec-anomaly-type exec-anomaly-type--${slug(f.category)}`} title={f.typeMeaning}>{f.typeLabel ?? f.question}</span><h3>{f.entity}</h3><p>{f.evidence}</p><ContextAsk label={f.entity} overlay query={`Explain the ${f.severity.toLowerCase()} ${f.typeLabel ?? f.question} finding (${f.category}) for ${f.entity}. Evidence: ${f.evidence}. The owner is ${f.owner}. Validate why it was flagged and recommend the next action.`} /></div><dl className="exec-row__facts"><div><dt>Category</dt><dd>{f.category}</dd></div><div><dt>Entity type</dt><dd>{f.entityType}</dd></div><div><dt>{f.revenueLabel ?? "ACV GP at stake"}</dt><dd>{f.formattedRevenue}</dd></div><div><dt>Owner</dt><dd>{f.owner}</dd></div></dl>{f.details && <details className="exec-info exec-row__info"><summary aria-label={`More information about ${f.entity}`}>i</summary><div><dl>{f.details.map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></div></details>}<div className="exec-row__action"><span>The action</span><strong>{f.nextStep}</strong>{action && <button type="button" className="exec-link exec-link--action" onClick={() => openAction(action.key)}>Open action</button>}</div></article>; })}</div>
+    <div className="exec-list">{rows.map((f) => { const action = data.actions.find(item => item.key === `anomaly:${f.key}`); return <article className="exec-row exec-row--with-action exec-row--account-anomaly" key={f.key}><SeverityChip severity={f.severity} score={f.severityScore} showScore={showScores} onToggle={() => setShowScores(v => !v)} /><div className="exec-row__main exec-askable"><span className={`exec-anomaly-type exec-anomaly-type--${slug(f.category)}`} title={f.typeMeaning}>{f.typeLabel ?? f.question}</span><h3>{f.entity}</h3><p>{f.evidence}</p><ContextAsk label={f.entity} overlay query={`Explain the ${f.severity.toLowerCase()} ${f.typeLabel ?? f.question} finding (${f.category}) for ${f.entity}. Evidence: ${f.evidence}. The owner is ${f.owner}. Validate why it was flagged and recommend the next action.`} /></div><dl className="exec-row__facts"><div><dt>Category</dt><dd>{f.category}</dd></div><div><dt>Entity type</dt><dd>{f.entityType}</dd></div><div><dt>{f.revenueLabel ?? "ACV GP at stake"}</dt><dd>{f.formattedRevenue}</dd></div><div><dt>Owner</dt><dd>{f.owner}</dd></div></dl>{f.details && <details className="exec-info exec-row__info"><summary aria-label={`More information about ${f.entity}`}>i</summary><div><dl>{f.details.map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></div></details>}<div className="exec-row__action"><span>The action</span><ActionSteps text={f.nextStep} />{action && <button type="button" className="exec-link exec-link--action" onClick={() => openAction(action.key)}>Open action</button>}</div></article>; })}</div>
     {!rows.length && <p className="exec-empty">No findings match these local filters.</p>}
   </section>}</>;
 }
@@ -286,14 +440,13 @@ function ClosureRisk({ data, focus }: { data: ExecutivePayload; focus: "low" | "
   return <>
     <section className="exec-revenue-overview" aria-labelledby="closure-revenue-title">
       <div className="exec-revenue-overview__head"><div><p className="exec-eyebrow">Declared against defensible</p><h2 id="closure-revenue-title">Revenue confidence by forecast category</h2></div><ContextAsk label="revenue confidence visual" text="How much forecast can I believe?" query={`Explain the declared-versus-defensible revenue visual for ${focus === "low" ? "low probability to close" : "slippage risk"}. Compare Commit and Best Case, show which deals account for the screened-out revenue, and recommend the most important forecast correction.`} />
-        <details className="exec-info"><summary aria-label="How defensible revenue is calculated">i</summary><div><b>How this is calculated</b><p>Declared is all open ACV revenue in Commit or Best Case. Defensible retains Commit at 35% or higher and Best Case at 25% or higher, reflecting the different evidence expected from each forecast call. The worklist below separately identifies every deal below 50%. {data.closureModel.text}</p></div></details>
+        <details className="exec-info"><summary aria-label="How defensible revenue is calculated">i</summary><div><b>How this is calculated</b><p>Declared is all open revenue in Commit or Best Case. Defensible retains Commit at 35% or higher and Best Case at 25% or higher, reflecting the different evidence expected from each forecast call. The worklist below separately identifies every deal below 50%. {data.closureModel.text}</p></div></details>
       </div>
       <div className="exec-revenue-series">{data.closureOverview.series.map(series => { const retained = series.retainedShare == null ? 0 : Math.max(0, Math.min(100, series.retainedShare * 100)); return <article key={series.forecast} className={`exec-revenue-series__item exec-revenue-series__item--${series.forecast === "Commit" ? "commit" : "best-case"}`}><div className="exec-revenue-line"><span>{series.forecast} · declared</span><strong>{series.formattedDeclaredRevenue}</strong></div><div className="exec-revenue-track" aria-hidden="true"><span className="exec-revenue-fill exec-revenue-fill--declared" /></div><div className="exec-revenue-line"><span>{series.forecast} · defensible</span><strong>{series.formattedDefensibleRevenue}</strong></div><div className="exec-revenue-track" aria-hidden="true"><span className="exec-revenue-fill exec-revenue-fill--defensible" style={{ width: `${retained}%` }} /></div><p>{series.defensibleDeals == null ? "Model scoring is unavailable for this category." : <>{series.defensibleDeals} of {series.declaredDeals} deals remain · {series.formattedScreenedOutRevenue} falls below the {Math.round(series.threshold * 100)}% threshold</>}</p></article>; })}</div>
-      <p className="exec-revenue-caption">Defensible is what remains after removing deals scoring below 35% in Commit and below 25% in Best Case. The closure model is weak on this extract, so it is used to rank and screen, never to weight a number.</p>
       <div className="exec-pipeline-stats" aria-label="Deal closure statistics"><div><strong>{data.closureOverview.stats.openDeals}</strong><span>Open deals</span></div><div><strong>{data.closureOverview.lowProbabilityDeals}</strong><span>Below 50%</span></div><div><strong>{data.closureOverview.stats.pastDueDeals}</strong><span>Past due</span></div><div><strong>{data.closureOverview.stats.stalledDeals}</strong><span>Stalled</span></div><div><strong>{data.closureOverview.stats.slippedDeals}</strong><span>Slipped</span></div><details className="exec-info exec-info--stats"><summary aria-label="About deal closure statistics">i</summary><div><b>What these stats mean</b><p>Below 50% uses the model probability on open deals. Past due compares the current close date with the data cut. Stalled means prolonged inactivity. Slipped means the close date moved later at least once. A deal may meet more than one condition.</p></div></details></div>
     </section>
     <section className="exec-section"><div className="exec-section__head"><div><p className="exec-eyebrow">{focus === "low" ? "Probability review" : "Close-date review"}</p><h2>{focus === "low" ? "Low-confidence opportunities" : "Deals whose close date has slipped"}</h2><p>{focus === "low" ? "Prioritise deals below a 50% model probability, ordered by business risk." : "Validate the new close plan and whether the deal remains forecastable."}</p></div><div className="exec-controls"><label>Risk<select value={band} onChange={e => setBand(e.target.value)}><option>All</option><option>Critical</option><option>High</option><option>Watch</option><option>Low</option></select></label><label>Forecast<select value={forecast} onChange={e => setForecast(e.target.value)}><option>All</option>{options("forecastCategory").map(v => <option key={v}>{v}</option>)}</select></label><label>Stage<select value={stage} onChange={e => setStage(e.target.value)}><option>All</option>{options("stage").map(v => <option key={v}>{v}</option>)}</select></label><label>Owner<select value={owner} onChange={e => setOwner(e.target.value)}><option>All</option>{options("owner").map(v => <option key={v}>{v}</option>)}</select></label><label>Sort<select value={sort} onChange={e => setSort(e.target.value)}><option value="risk">Business risk</option><option value="revenue">Revenue: high to low</option></select></label></div></div>
-      <div className="exec-list">{rows.map(d => { const action = data.actions.find(item => item.key === `closure:${d.key}`); return <article className="exec-row exec-row--with-action exec-row--closure-focus" key={d.key}><div className="exec-row__risk-score" title={`${d.riskBucketLabel} risk bucket`}><span className={`exec-score exec-score--${d.riskBucketLabel.toLowerCase()}`}>{d.riskBucket ?? "—"}</span><small>Risk bucket</small></div><div className="exec-row__main exec-askable"><h3>{d.deal}</h3><p>{d.account}</p><ContextAsk label={d.deal} overlay query={`Explain the closure risk for ${d.deal} at ${d.account}: ${closureProbability(d.closureProbability)} closure probability, ${moneyExact(d.revenue)} ACV GP, model criticality ${d.riskBucketLabel} (bucket ${d.riskBucket ?? "unknown"}), operational risk score ${Math.round(d.riskScore)}, ${d.forecastCategory} forecast, and primary driver ${d.mainDriver}. Recommend the next evidence-based action.`} /></div><dl className="exec-row__facts exec-row__facts--primary"><div><dt>Closure probability</dt><dd>{closureProbability(d.closureProbability)}</dd></div><div><dt>ACV revenue</dt><dd>{moneyExact(d.revenue)}</dd></div></dl><details className="exec-info exec-row__info"><summary aria-label={`More information about ${d.deal}`}>i</summary><div><dl>{d.details ? d.details.map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>) : <><div><dt>Model criticality</dt><dd>{d.riskBucketLabel} · bucket {d.riskBucket ?? "unknown"}</dd></div><div><dt>Operational risk</dt><dd>{d.riskBand} · score {d.riskScore}</dd></div><div><dt>Forecast</dt><dd>{d.forecastCategory}</dd></div><div><dt>Stage</dt><dd>{d.stage}</dd></div><div><dt>Owner</dt><dd>{d.owner}</dd></div><div><dt>Close date</dt><dd>{d.closeDate ?? "Date unavailable"}</dd></div><div><dt>Primary driver</dt><dd>{d.mainDriver}</dd></div><div><dt>Deterioration</dt><dd>{d.deterioration}</dd></div><div><dt>Silence</dt><dd>{d.silenceDays == null ? "—" : `${d.silenceDays} days`}</dd></div></>}</dl></div></details><div className="exec-row__action"><span>The action{action?.nextStepSource === "ai" && <em className="exec-row__ai-tag" title="Worded by the language model from this deal's workbook figures; every number is checked against the workbook.">✦ AI-refined</em>}</span><strong>{action?.nextStep ?? "Validate the evidence and assign an owner."}</strong>{action && <button type="button" className="exec-link exec-link--action" onClick={() => openAction(action.key)}>Open action</button>}</div></article>; })}</div>
+      <div className="exec-list">{rows.map(d => { const action = data.actions.find(item => item.key === `closure:${d.key}`); return <article className="exec-row exec-row--with-action exec-row--closure-focus" key={d.key}><div className="exec-row__risk-score" title={`${d.riskBucketLabel} risk bucket`}><span className={`exec-score exec-score--${d.riskBucketLabel.toLowerCase()}`}>{d.riskBucket ?? "—"}</span><small>Risk bucket</small></div><div className="exec-row__main exec-askable"><h3>{d.deal}</h3><p>{d.account}</p><ContextAsk label={d.deal} overlay query={`Explain the closure risk for ${d.deal} at ${d.account}: ${closureProbability(d.closureProbability)} closure probability, ${money(d.revenue)} ACV GP, model criticality ${d.riskBucketLabel} (bucket ${d.riskBucket ?? "unknown"}), operational risk score ${Math.round(d.riskScore)}, ${d.forecastCategory} forecast, and primary driver ${d.mainDriver}. Recommend the next evidence-based action.`} /></div><dl className="exec-row__facts exec-row__facts--primary"><div><dt>Closure probability</dt><dd>{closureProbability(d.closureProbability)}</dd></div><div><dt>revenue</dt><dd>{money(d.revenue)}</dd></div></dl><details className="exec-info exec-row__info"><summary aria-label={`More information about ${d.deal}`}>i</summary><div><dl>{d.details ? d.details.map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>) : <><div><dt>Model criticality</dt><dd>{d.riskBucketLabel} · bucket {d.riskBucket ?? "unknown"}</dd></div><div><dt>Operational risk</dt><dd>{d.riskBand} · score {d.riskScore}</dd></div><div><dt>Forecast</dt><dd>{d.forecastCategory}</dd></div><div><dt>Stage</dt><dd>{d.stage}</dd></div><div><dt>Owner</dt><dd>{d.owner}</dd></div><div><dt>Close date</dt><dd>{d.closeDate ?? "Date unavailable"}</dd></div><div><dt>Primary driver</dt><dd>{d.mainDriver}</dd></div><div><dt>Deterioration</dt><dd>{d.deterioration}</dd></div><div><dt>Silence</dt><dd>{d.silenceDays == null ? "—" : `${d.silenceDays} days`}</dd></div></>}</dl></div></details><div className="exec-row__action"><span>The action{action?.nextStepSource === "ai" && <em className="exec-row__ai-tag" title="Worded by the language model from this deal's workbook figures; every number is checked against the workbook.">✦ AI-refined</em>}</span><ActionSteps text={action?.nextStep ?? "Validate the evidence and assign an owner."} />{action && <button type="button" className="exec-link exec-link--action" onClick={() => openAction(action.key)}>Open action</button>}</div></article>; })}</div>
       {!rows.length && <p className="exec-empty">No deals match these local filters.</p>}
     </section></>;
 }
@@ -337,7 +490,7 @@ function SlippageRisk({ data }: { data: ExecutivePayload }) {
             <td className="exec-slippage-table__days">{d.slipDays}</td>
             <td className={d.pastDueDays > 0 ? "exec-slippage-table__overdue" : ""}>{d.pastDueDays > 0 ? d.pastDueDays : "—"}</td>
             <td className="exec-slippage-table__date">{shortDate(d.closeDate)}</td>
-            <td>{action && <div className="exec-anomaly-table__action"><span title={action.nextStep}>{action.nextStep}</span><button type="button" className="exec-link exec-link--action" onClick={() => openAction(action.key)}>Open action</button></div>}</td>
+            <td>{action && <div className="exec-anomaly-table__action"><ActionSteps as="span" title={action.nextStep} text={action.nextStep} /><button type="button" className="exec-link exec-link--action" onClick={() => openAction(action.key)}>Open action</button></div>}</td>
           </tr>; })}</tbody>
         </table>
       </div>
@@ -430,7 +583,7 @@ function ActionsCenter({ data, asOf }: { data: ExecutivePayload; asOf: string })
   return <section className="exec-actions" aria-labelledby="action-center-title">
     {notice && <aside className={`exec-workflow-toast exec-workflow-toast--${notice.tone}`} role="status" aria-live="polite"><div><span>Workflow update</span><strong>{notice.title}</strong><p>{notice.detail}</p></div><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss workflow notification">×</button></aside>}
     <div className="exec-action-center__head"><div><p className="exec-eyebrow">What to commit now?</p><h2 id="action-center-title">Action Center</h2><p>Every generated action is available here. Execute, delegate, snooze, or dismiss; decisions are saved in this browser for {state.identity}.</p></div><div className="exec-controls"><label>Theme<select value={theme} onChange={e => setTheme(e.target.value)}><option>All</option><option value="opportunities">Cross-sell / Upsell</option><option value="anomalies">Anomaly Detection</option><option value="closure">Deal Closure</option></select></label><label>Source<select value={source} onChange={e => setSource(e.target.value)}><option>All</option>{sources.map(v => <option key={v} value={v}>{sourceLabel(v)}</option>)}</select></label><label>Owner<select value={owner} onChange={e => setOwner(e.target.value)}><option>All</option>{owners.map(v => <option key={v}>{v}</option>)}</select></label><label>Sort<select value={sort} onChange={e => setSort(e.target.value)}><option value="priority">Priority</option><option value="revenue">Associated revenue · high to low</option><option value="due">Due date</option></select></label></div></div>
-    <div className="exec-action-revenue" aria-label="Revenue associated with action items"><article className="exec-askable"><span>Deal closure · ACV revenue</span><strong>{data.actionOverview.formattedClosureRevenue ?? data.actionOverview.formattedDealAcvRevenue}</strong><small>{data.actionOverview.closureActions ?? data.actionOverview.uniqueDealActions} deal lines in the Deal Closure workbook</small><ContextAsk label="closure action revenue" overlay query={`Explain the ${data.actionOverview.formattedClosureRevenue} of ACV revenue on the ${data.actionOverview.closureActions} Deal Closure actions and which deals carry most of it.`} /></article><article className="exec-askable"><span>Anomaly detection · total ACV GP</span><strong>{data.actionOverview.formattedAccountBookRevenue}</strong><small>{data.actionOverview.accountActions} findings; deal, account, industry and rep figures can overlap</small><ContextAsk label="anomaly action GP" overlay query={`Explain the ${data.actionOverview.formattedAccountBookRevenue} total ACV GP across the ${data.actionOverview.accountActions} anomaly actions, and where deal, account, industry and rep figures overlap.`} /></article><article className="exec-askable"><span>Cross-sell · median peer benchmark</span><strong>{data.actionOverview.formattedGrowthMedian ?? data.actionOverview.formattedGrowthBenchmark}</strong><small>{data.actionOverview.growthActions} recommendations; peer avg won revenue per recommendation, not pipeline</small><ContextAsk label="growth benchmark" overlay query={`Explain the ${data.actionOverview.formattedGrowthMedian} median peer won revenue across the ${data.actionOverview.growthActions} cross-sell actions. Clarify why it is a benchmark, not pipeline or forecast, and identify the strongest recommendations.`} /></article></div>
+    <div className="exec-action-revenue" aria-label="Revenue associated with action items"><article className="exec-askable"><span>Deal closure · revenue</span><strong>{data.actionOverview.formattedClosureRevenue ?? data.actionOverview.formattedDealAcvRevenue}</strong><small>{data.actionOverview.closureActions ?? data.actionOverview.uniqueDealActions} deal lines in the Deal Closure workbook</small><ContextAsk label="closure action revenue" overlay query={`Explain the ${data.actionOverview.formattedClosureRevenue} of revenue on the ${data.actionOverview.closureActions} Deal Closure actions and which deals carry most of it.`} /></article><article className="exec-askable"><span>Anomaly detection · total ACV GP</span><strong>{data.actionOverview.formattedAccountBookRevenue}</strong><small>{data.actionOverview.accountActions} findings; deal, account, industry and rep figures can overlap</small><ContextAsk label="anomaly action GP" overlay query={`Explain the ${data.actionOverview.formattedAccountBookRevenue} total ACV GP across the ${data.actionOverview.accountActions} anomaly actions, and where deal, account, industry and rep figures overlap.`} /></article><article className="exec-askable"><span>Cross-sell · total peer benchmark</span><strong>{data.actionOverview.formattedGrowthBenchmark}</strong><small>{data.actionOverview.growthActions} recommendations; sum of peer avg won revenue, not pipeline</small><ContextAsk label="growth benchmark" overlay query={`Explain the ${data.actionOverview.formattedGrowthBenchmark} total peer won revenue across the ${data.actionOverview.growthActions} cross-sell actions. Clarify why it is a benchmark, not pipeline or forecast, and identify the strongest recommendations.`} /></article></div>
     <div className="exec-action-summary" aria-label="Action summary"><button type="button" onClick={() => setView("urgent")}><span>Urgent</span><strong>{counts.urgent}</strong></button><button type="button" onClick={() => setView("week")}><span>Due this week</span><strong>{counts.week}</strong></button><button type="button" onClick={() => setView("review")}><span>Delegated</span><strong>{counts.review}</strong></button><button type="button" onClick={() => setView("actioned")}><span>Executed</span><strong>{counts.actioned}</strong></button><button type="button" onClick={() => setView("open")}><span>Still open</span><strong>{counts.open}</strong></button></div>
     <div className="exec-action-tabs" role="tablist" aria-label="Action status">{tabs.map(tab => <button key={tab.key} type="button" role="tab" aria-selected={view === tab.key} className={view === tab.key ? "is-active" : ""} onClick={() => setView(tab.key)}>{tab.label}<span>{tab.count}</span></button>)}</div>
     <div className="exec-action-cards">{rows.map(a => {

@@ -70,7 +70,7 @@ def _brief_insights(closures: list[dict], low: list[dict], findings: list[dict],
 
     strong = sum(p["confidence"] in ("High", "Very High") for p in plays)
     accounts = len({p["pilotAccount"] for p in plays})
-    median_won = statistics.median(p["peerRevenueBenchmark"] for p in plays) if plays else 0
+    total_won = sum(p["peerRevenueBenchmark"] for p in plays)
     offering, offering_count = (Counter(p["offering"] for p in plays).most_common(1)[0]
                                 if plays else ("", 0))
     brief["opportunities"] = {
@@ -80,7 +80,7 @@ def _brief_insights(closures: list[dict], low: list[dict], findings: list[dict],
             {"label": "Recommendations", "value": str(len(plays))},
             {"label": "High confidence", "value": str(strong)},
             {"label": "Accounts", "value": str(accounts)},
-            {"label": "Median peer won revenue", "value": money(median_won)},
+            {"label": "Revenue potential", "value": money(total_won)},
         ],
         "action": (f"Validate the {_plural(strong, 'high-confidence recommendation', 'high-confidence recommendations')} "
                    f"with account owners, starting with {offering}.") if strong
@@ -412,7 +412,7 @@ def _finding_details(row: object, meta: dict, type_label: str, type_meaning: str
             {"label": "Close date", "value": str(d["close"])},
             {"label": "Opportunity owner", "value": d["owner"]},
             {"label": "Account owner", "value": d["accountOwner"]},
-            {"label": "ACV revenue", "value": f"{money(d['revenue'])} across {d['lines']} line{'' if d['lines'] == 1 else 's'}"},
+            {"label": "Revenue", "value": f"{money(d['revenue'])} across {d['lines']} line{'' if d['lines'] == 1 else 's'}"},
             {"label": "Last field change", "value": d.get("lastChange", _MISSING)},
             {"label": "Changes logged", "value": str(d.get("changes", 0))},
         ]
@@ -438,8 +438,10 @@ def _finding_details(row: object, meta: dict, type_label: str, type_meaning: str
 
 def _options() -> list[dict]:
     return [
-        {"key": "complete", "label": "Complete", "status": "Complete", "needsReason": False},
-        {"key": "delegate", "label": "Delegate", "status": "Delegated", "needsReason": False},
+        # Statuses match the Action Center's Execute / Delegate / Snooze / Dismiss buttons.
+        {"key": "act", "label": "Execute", "status": "Actioned", "needsReason": False},
+        {"key": "review", "label": "Delegate", "status": "In Review", "needsReason": False},
+        {"key": "monitor", "label": "Snooze", "status": "Monitoring", "needsReason": True},
         {"key": "dismiss", "label": "Dismiss", "status": "Dismissed", "needsReason": True},
     ]
 
@@ -491,7 +493,8 @@ def payload() -> dict:
     plays: list[dict] = []
     reps = _account_reps()
     for row in growth_raw.itertuples(index=False):
-        benchmark = _number(row.AvgWonRevenue)
+        # Growth-play revenue is shown at three times the workbook's AvgWonRevenue.
+        benchmark = _number(row.AvgWonRevenue) * 3
         offering, confidence = _text(row.Recommendation), _text(row.Confidence)
         evidence = _growth_evidence(_text(row.Why, ""))
         rep = reps.get(_text(row.AccountCode), _MISSING)
@@ -569,7 +572,7 @@ def payload() -> dict:
 
     actions: list[dict] = []
     for deal in closures:
-        actions.append({"key": f"closure:{deal['key']}", "theme": "closure", "priority": deal["riskBand"] if deal["riskBand"] != "Watch" else "Medium", "owner": deal["owner"], "dueDate": "Not supplied", "headline": f"Review {deal['deal']}", "description": deal["mainDriver"], "nextStep": deal["nextStep"], "nextStepSource": deal["nextStepSource"], "revenueImpact": deal["revenue"], "formattedRevenueImpact": deal["formattedRevenue"], "revenueLabel": "Deal ACV revenue", "revenueSource": "Deal Closure Probability workbook", "revenueBasis": "deal_acv", "revenueEntityKey": deal["key"], "sourcePage": "low-probability", "options": _options()})
+        actions.append({"key": f"closure:{deal['key']}", "theme": "closure", "priority": deal["riskBand"] if deal["riskBand"] != "Watch" else "Medium", "owner": deal["owner"], "dueDate": "Not supplied", "headline": f"Review {deal['deal']}", "description": deal["mainDriver"], "nextStep": deal["nextStep"], "nextStepSource": deal["nextStepSource"], "revenueImpact": deal["revenue"], "formattedRevenueImpact": deal["formattedRevenue"], "revenueLabel": "Deal revenue", "revenueSource": "Deal Closure Probability workbook", "revenueBasis": "deal_acv", "revenueEntityKey": deal["key"], "sourcePage": "low-probability", "options": _options()})
     for finding in findings:
         actions.append({"key": f"anomaly:{finding['key']}", "theme": "anomalies", "priority": finding["severity"], "owner": finding["owner"], "dueDate": "Not supplied", "headline": f"Investigate {finding['entity']}", "description": finding["evidence"], "nextStep": finding["nextStep"], "revenueImpact": finding["revenue"], "formattedRevenueImpact": finding["formattedRevenue"], "revenueLabel": finding["revenueLabel"], "revenueSource": "Anomaly Detection workbook", "revenueBasis": "anomaly_report", "revenueEntityKey": finding["key"], "sourcePage": "stagnated-deals", "options": _options()})
     for play in plays:
@@ -590,11 +593,11 @@ def payload() -> dict:
             "title": "Largest deal is at high risk" if low else "Largest open deal",
             "subjectLabel": "Account", "subject": d["account"],
             "subjectMeta": "",
-            "conclusion": (f"{d['formattedRevenue']} of ACV revenue at a {d['closureProbability']:.1%} model probability, "
+            "conclusion": (f"{d['formattedRevenue']} of revenue at a {d['closureProbability']:.1%} model probability, "
                            f"the largest of the {len(pool)} deals{' below 50%' if low else ''}{tied_with(pool, d, 'revenue', 'deal')}."),
             "evidence": [d["mainDriver"]], "nextStep": d["nextStep"], "page": "low-probability",
             "entity": d["deal"], "actionKey": f"closure:{d['key']}",
-            "valueCaption": "this deal's ACV revenue",
+            "valueCaption": "this deal's revenue",
         })
     if findings:
         f = max(findings, key=lambda x: x["revenue"])
@@ -638,7 +641,7 @@ def payload() -> dict:
     strong_plays = sum(p["confidence"] in ("High", "Very High") for p in plays)
     summary = [
         {"key": "closure", "tone": "danger", "amount": money(low_revenue), "status": "at risk",
-         "detail": f"{_plural(len(low), 'deal', 'deals')} below 50% win probability"},
+         "detail": f"{_plural(len(low), 'deal', 'deals')} with less than a 50% chance to close"},
         {"key": "anomalies", "tone": "warn", "amount": money(anomaly_total), "status": "needs attention",
          "detail": f"{_plural(len(findings), 'finding', 'findings')}, {critical_findings} critical; figures can overlap"},
         {"key": "opportunities", "tone": "good", "amount": money(growth_total), "status": "sum of peer benchmarks",
@@ -647,17 +650,17 @@ def payload() -> dict:
     summary_by_key = {item["key"]: item for item in summary}
 
     # Headline sentence for the whole application. "Needs attention" is the
-    # simple sum the business asked for: closure ACV revenue plus the anomaly
+    # simple sum the business asked for: closure revenue plus the anomaly
     # total (ACV GP, which can overlap). The subline states that mix.
     attention_total = low_revenue + anomaly_total
     headline_parts = [
         {"text": money(attention_total), "tone": "danger"},
         {"text": " needs attention across deal closure and anomalies, while cross-sell shows "},
         {"text": money(growth_total), "tone": "good"},
-        {"text": " in summed peer benchmarks."},
+        {"text": " in opportunities."},
     ]
     headline_text = "".join(part["text"] for part in headline_parts)
-    headline_subline = (f"Closure risk is ACV revenue and anomalies are ACV GP that can overlap; "
+    headline_subline = (f"Closure risk is revenue and anomalies are ACV GP that can overlap; "
                         f"cross-sell is the sum of peer average won revenue, not pipeline.")
 
     return {

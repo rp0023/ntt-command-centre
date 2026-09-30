@@ -49,6 +49,7 @@ import type { AskResponse, ChartSpec, Sentence } from "../api/types";
 import { describe } from "../lenses/useView";
 import { useApp } from "../state/AppStateProvider";
 import type { AskSeed } from "../state/filters";
+import { AskedOutline } from "./AskedOutline";
 import { Glyph } from "./askGlyphs";
 
 /* ------------------------------------------------------------------- lenses */
@@ -609,10 +610,10 @@ function ChartAskPanel({
                 key={turn.id}
                 aria-label={`You asked: ${turn.question}`}
               >
-                <p className="chart-ask__asked">
+                <div className="chart-ask__asked">
                   <span className="chart-ask__asked-label">You asked</span>
-                  <span className="chart-ask__asked-text">{turn.question}</span>
-                </p>
+                  <AskedOutline question={turn.question} fallback={<span className="chart-ask__asked-text">{turn.question}</span>} />
+                </div>
 
                 {turn.status === "pending" ? <AnswerSkeleton /> : null}
 

@@ -112,10 +112,19 @@ export function SidebarNav({
   const executiveSummary = (page: NavItem) => {
     if (!executive) return page.question;
     switch (page.key) {
-      case "tldr":
-        return executive.weeklyInsights.length
-          ? `${executive.weeklyInsights.length} insights, ${executive.weeklyInsights.length} actions`
-          : "Weekly insights and actions";
+      case "tldr": {
+        // The Brief shows up to five items per use case; count from the
+        // overviews, since other pages' payloads empty the item lists.
+        const counts = [
+          executive.closureOverview.lowProbabilityDeals,
+          executive.anomalyOverview.accountFindings,
+          executive.opportunityOverview.recommendations,
+        ].filter(n => n > 0);
+        const items = counts.reduce((sum, n) => sum + Math.min(5, n), 0);
+        return items
+          ? `Top 5 · ${items} items across ${counts.length} use case${counts.length === 1 ? "" : "s"}`
+          : "Weekly top items and actions";
+      }
       case "low-probability":
         return `${executive.closureOverview.formattedLowProbabilityRevenue} below 50% probability`;
       case "slippage-risk":
@@ -127,7 +136,7 @@ export function SidebarNav({
       case "account-anomalies":
         return `${executive.anomalyOverview.formattedAccountRevenue} under investigation`;
       case "opportunities":
-        return `${executive.opportunityOverview.formattedPeerWonRevenueMedian} median peer benchmark`;
+        return `${executive.opportunityOverview.formattedPeerRevenueBenchmark} total peer benchmark`;
       default:
         return page.question;
     }

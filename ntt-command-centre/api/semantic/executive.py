@@ -656,7 +656,7 @@ def _weekly_focus(findings: list[dict], closures: list[dict],
             {
                 "key": "closure", "tone": "danger", "label": "Deal closure likelihood",
                 "headline": (f"{closure_overview['formattedLowProbabilityRevenue']} ACV GP "
-                             "is below 50% win probability"),
+                             "has less than a 50% chance to close"),
                 "subline": (f"{count(closure_overview['lowProbabilityDeals'])} open deals "
                             "are below 50% model probability."),
                 "page": "low-probability",
@@ -789,15 +789,9 @@ def payload(fs: FilterState, principal: Principal) -> dict:
 def view(page: str, fs: FilterState, principal: Principal, label: str, question: str) -> dict:
     focused = payload(fs, principal)
     if page == "tldr":
-        weekly_action_keys = {
-            insight["actionKey"] for insight in focused["weeklyInsights"]
-            if insight.get("actionKey")
-        }
-        focused["actions"] = [a for a in focused["actions"] if a["key"] in weekly_action_keys]
-        focused["opportunityPlays"] = []
-        focused["anomalyFindings"] = []
+        # The Brief ranks the top five of each use case from these lists and
+        # opens each item's action, so the lists and their actions stay.
         focused["stalledDeals"] = []
-        focused["closureExceptions"] = []
         focused["slippageDeals"] = []
     elif page == "opportunities":
         focused["actions"] = [a for a in focused["actions"] if a["theme"] == "opportunities"]
@@ -835,7 +829,7 @@ def view(page: str, fs: FilterState, principal: Principal, label: str, question:
         "stagnated-deals": {"value": focused["anomalyOverview"]["accountRevenue"], "formatted": focused["anomalyOverview"]["formattedAccountRevenue"], "label": (f"total ACV GP across all {focused['anomalyOverview']['accountFindings']} findings; deal, account, industry and rep figures can overlap")},
         "account-anomalies": {"value": focused["anomalyOverview"]["accountRevenue"], "formatted": focused["anomalyOverview"]["formattedAccountRevenue"], "label": "open revenue belongs to accounts with a risk anomaly"},
         "opportunities": {"value": focused["opportunityOverview"]["peerWonRevenueMedian"] or 0, "formatted": focused["opportunityOverview"]["formattedPeerWonRevenueMedian"], "label": (f"median peer won revenue per recommendation (range {focused['opportunityOverview'].get('formattedPeerWonRevenueMin', 'n/a')} to {focused['opportunityOverview'].get('formattedPeerWonRevenueMax', 'n/a')}); a benchmark, not pipeline or forecast")},
-        "action-center": {"value": focused["actionOverview"]["dealAcvRevenue"], "formatted": focused["actionOverview"]["formattedDealAcvRevenue"], "label": "unique deal ACV attached to action items; account-book ACV and growth benchmark are shown separately"},
+        "action-center": {"value": focused["actionOverview"]["dealAcvRevenue"], "formatted": focused["actionOverview"]["formattedDealAcvRevenue"], "label": "unique deal ACV attached to action items."},
     }.get(page)
     return {
         "page": page, "label": label, "question": question, "persona": "executive",
