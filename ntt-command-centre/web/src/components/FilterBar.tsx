@@ -70,11 +70,13 @@ export function MeasureToggle({ measure, onMeasure }: {
   );
 }
 
-export function MoreFilters({ dimensions, active, onSet, onClear }: {
+export function MoreFilters({ dimensions, active, onSet, onClear, disabled = false }: {
   dimensions: MetaDimension[];
   active: Partial<Record<DimKey, string | null>>;
   onSet: (dim: DimKey, value: string | null) => void;
   onClear: () => void;
+  /** Shown but inert, to signal the filters exist on a page that does not apply them. */
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -109,11 +111,13 @@ export function MoreFilters({ dimensions, active, onSet, onClear }: {
         ref={triggerRef}
         aria-haspopup="dialog"
         aria-expanded={open}
+        disabled={disabled}
+        title={disabled ? "Filters are not available on this page" : undefined}
         onClick={() => setOpen((current) => !current)}
       >
         More filters{activeCount ? ` (${activeCount})` : ""}
       </button>
-      {open ? (
+      {open && !disabled ? (
         <section className="more-filters__popover" role="dialog" aria-label="More page filters">
           <div className="more-filters__head">
             <div>

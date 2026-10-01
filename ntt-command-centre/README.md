@@ -333,7 +333,17 @@ live in the query string, so any view is reproducible from its URL.
 ## Deployment
 
 Front end → Vercel (`npm run build`, output `web/dist`, root directory `web/`). API → GCP Cloud Run
-(`uvicorn api.main:app`, built from the `Dockerfile` here). Everything environment-dependent is in
+(`uvicorn main:app` from `/app/api`, built from the `Dockerfile` here).
+
+Both halves in Docker: `docker compose up --build` serves the front end on http://localhost:8080
+(nginx, built from `web/Dockerfile`, proxying `/api` and `/healthz` to the API exactly as Vite does)
+and the API on http://localhost:8808. Keys are read from `./.env` if present; accounts from
+`./.demo-accounts.json`, mounted as a compose secret. Override ports with `WEB_PORT` / `API_PORT`.
+
+Azure App Service: `AZ_PREFIX=<unique-name> ./deploy/azure/deploy.sh`. See
+[deploy/azure/README.md](deploy/azure/README.md).
+
+Everything environment-dependent is in
 `api/config.py`:
 
 | Variable | What |

@@ -5,9 +5,11 @@ docs
 .venv
 .myenv
 venv
+**/myenv
 .env
 *.log
-data/source/*.xlsx
 .access-disabled
 .demo-accounts.json
-**/myenv
+.gcloudignore
+docker-compose.yml
+deploy

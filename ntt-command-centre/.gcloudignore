@@ -6,7 +6,6 @@ docs/
 .myenv/
 .env
 *.log
-data/source/*.xlsx
 .access-disabled
 .demo-accounts.json
 **/myenv

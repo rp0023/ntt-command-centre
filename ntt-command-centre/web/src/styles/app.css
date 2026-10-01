@@ -564,7 +564,12 @@ button {
   white-space: nowrap;
 }
 
-.more-filters__trigger:hover,
+.more-filters__trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.more-filters__trigger:not(:disabled):hover,
 .more-filters__trigger--on {
   border-color: var(--persona);
   color: var(--persona);
